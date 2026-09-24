@@ -1,0 +1,18 @@
+{
+  "name": "Nicole's Revision Tracker",
+  "short_name": "Revision",
+  "description": "Everything taught this year in URO, ENI and GIL. Tick off what you've revised, flag anything that needs another pass.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F2EFE2",
+  "theme_color": "#F2EFE2",
+  "lang": "en-GB",
+  "categories": ["education", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
