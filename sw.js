@@ -6,7 +6,7 @@
      anything else       -> network
 */
 
-var VERSION = "v1";
+var VERSION = "v2";
 var SHELL = "shell-" + VERSION;
 var FONTS = "fonts-" + VERSION;
 
@@ -14,6 +14,8 @@ var PRECACHE = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
+  "./questions.js",
+  "./qb.js",
   "./icons/icon-180.png",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
