@@ -143,7 +143,7 @@
   function renderToday(date) {
     curDate = date || curDate || today();
     var d = dayFor(curDate), f = fmt(curDate), t = today();
-    var h = '<header class="q-head"><div><p class="q-eyebrow">' + (curDate === t ? "Today" : curDate < t ? "Earlier" : "Coming up") + '</p><h1>' + f.long + '</h1></div><button class="q-icon" data-theme aria-label="Switch light or dark"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button></header>';
+    var h = '<header class="q-head"><div><p class="q-eyebrow">' + (curDate === t ? "Today" : curDate < t ? "Earlier" : "Coming up") + '</p><h1>' + f.long + '</h1></div><button class="q-icon" data-settings aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg></button></header>';
     h += heroHtml() + weekHtml(curDate);
     if (curDate === t) h += overdueHtml();
     h += '<div class="q-dayhead mod-' + dayMod(d) + '"><span class="q-chip">' + esc(dayLabel(d)) + "</span>" + (curDate !== t ? '<button class="q-btn sm" data-today>Back to today</button>' : "") + "</div>";
@@ -172,7 +172,7 @@
 
   // ---------- PRACTICE ----------
   function renderPractice() {
-    var byMod = {ENI:[], GIL:[], URO:[]}, h = '<header class="q-head"><div><p class="q-eyebrow">Practice</p><h1>Every question set</h1></div></header>';
+    var byMod = {ENI:[], GIL:[], URO:[]}, h = '<header class="q-head"><div><p class="q-eyebrow">Practice</p><h1>Every question set</h1></div><button class="q-icon" data-settings aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg></button></header>';
     Object.keys(DATA.sets).forEach(function (sid) { var s = DATA.sets[sid]; byMod[s.module].push([sid, s]); });
     ["GIL","URO","ENI"].forEach(function (m) {
       h += '<div class="q-mh mod-' + m + '"><h2>' + MOD[m] + '</h2><span class="q-chip">' + m + '</span></div><div class="q-cards">';
@@ -190,7 +190,7 @@
 
   // ---------- PROGRESS ----------
   function renderProgress() {
-    var h = '<header class="q-head"><div><p class="q-eyebrow">Progress</p><h1>How it\'s going</h1></div></header><div class="q-mods">';
+    var h = '<header class="q-head"><div><p class="q-eyebrow">Progress</p><h1>How it\'s going</h1></div><button class="q-icon" data-settings aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg></button></header><div class="q-mods">';
     ["GIL","URO","ENI"].forEach(function (m) {
       var ids = ALL.filter(function (it) { return it.mod === m; }), dn = ids.filter(function (it) { return done[it.id]; }).length;
       var od = ids.filter(function (it) { return sessState(it.id) === "overdue"; }).length;
@@ -207,14 +207,110 @@
     h += '<div class="q-mh"><h2>Needs another pass</h2></div>';
     h += weak.length ? '<div class="q-cards">' + weak.slice(0, 10).map(function (p) { var b = p[0]; return '<div class="q-tcard mod-' + b.module + '"><h3>' + esc(b.title) + '</h3><div class="q-lk"><button class="q-btn sm" data-open="' + b.key + '">' + esc(b.label) + " · " + p[1].pct + "% · review</button></div></div>"; }).join("") + "</div>"
       : '<div class="q-empty">Sets you score under 60% on appear here, lowest first.</div>';
-    h += '<div class="q-mh"><h2>How it works</h2></div><div class="q-notes"><ul>' +
+    var holder = $("q-progress-body"); holder.innerHTML = h;
+  }
+
+  function howItWorksHtml() {
+    return '<div class="q-notes"><ul>' +
       "<li><b>Today</b> lists the sessions due today with that topic's questions underneath. Tick each session when you've revised it.</li>" +
       "<li>A session turns <span class=\"warn\">amber</span> when you've marked its questions but haven't ticked it, and <span class=\"bad\">red</span> once its day has passed unticked. Red ones collect under Overdue at the top of Today.</li>" +
       "<li>Questions come one at a time. Nothing is marked until you press <b>Finish and mark</b> at the end of the set.</li>" +
       "<li>Single best answer, extended matching and fill in the blank mark themselves. For short answers and OSPE stations you mark yourself against the mark scheme.</li>" +
       "<li>Each first-pass set covers every learning outcome for its topic; extra questions needed for that are labelled LO top-up.</li>" +
-      "<li>Everything saves on this phone. Use Save a backup below now and then.</li></ul></div>";
-    var holder = $("q-progress-body"); holder.innerHTML = h;
+      "<li>Everything saves on this phone. Save a backup now and then (Settings → Your data).</li></ul></div>";
+  }
+
+  // ---------- SETTINGS ----------
+  var THEME = "nicole-revision-theme";
+  function themeMode() { try { var t = localStorage.getItem(THEME); return t === "dark" || t === "light" ? t : "system"; } catch (e) { return "system"; } }
+  function setTheme(mode) {
+    var r = document.documentElement;
+    try { if (mode === "system") localStorage.removeItem(THEME); else localStorage.setItem(THEME, mode); } catch (e) {}
+    if (mode === "system") r.removeAttribute("data-theme"); else r.setAttribute("data-theme", mode);
+  }
+  var RS = null; // reset selection {ticks, answers, streak, flags, mods:{URO,ENI,GIL}}
+  function resetCounts(sel) {
+    var mods = sel.mods, c = {ticks:0, flags:0, sets:0, answers:0, days:0};
+    if (sel.ticks) Object.keys(done).forEach(function (id) { if (mods[id.split("-")[0]]) c.ticks++; });
+    if (sel.flags) Object.keys(flags).forEach(function (id) { if (mods[id.split("-")[0]]) c.flags++; });
+    if (sel.answers) Object.keys(BLOCKS).forEach(function (k) { var b = BLOCKS[k]; if (!inScope(b, mods)) return;
+      if (S.marked[k]) c.sets++; b.questions.forEach(function (q) { if (S.a[q.id]) c.answers++; }); });
+    if (sel.streak) c.days = Object.keys(S.days).length;
+    return c;
+  }
+  function inScope(b, mods) { return b.module === "OSPE" || b.module === "ALL" ? mods.URO && mods.ENI && mods.GIL : !!mods[b.module]; }
+  function doReset(sel) {
+    var mods = sel.mods;
+    if (sel.ticks) Object.keys(done).forEach(function (id) { if (mods[id.split("-")[0]]) delete done[id]; });
+    if (sel.flags) Object.keys(flags).forEach(function (id) { if (mods[id.split("-")[0]]) delete flags[id]; });
+    if (sel.answers) Object.keys(BLOCKS).forEach(function (k) { var b = BLOCKS[k]; if (!inScope(b, mods)) return;
+      delete S.marked[k]; delete S.pos[k]; b.questions.forEach(function (q) { delete S.a[q.id]; }); });
+    if (sel.streak) S.days = {};
+    store(KEY, done); store(FLAG_KEY, flags); save(); planDirty = true;
+  }
+  function summaryLines(sel) {
+    var c = resetCounts(sel), names = ["URO","ENI","GIL"].filter(function (m) { return sel.mods[m]; }), scope = names.length === 3 ? "all modules" : names.join(" and "), out = [];
+    if (sel.ticks) out.push("<b>" + c.ticks + "</b> ticked " + (c.ticks === 1 ? "session" : "sessions") + " in " + scope);
+    if (sel.answers) out.push("<b>" + c.sets + "</b> marked question " + (c.sets === 1 ? "set" : "sets") + (c.answers ? " and <b>" + c.answers + "</b> saved " + (c.answers === 1 ? "answer" : "answers") : "") + " in " + scope + (names.length === 3 ? ", including the mocks and OSPE" : ""));
+    if (sel.flags) out.push("<b>" + c.flags + "</b> " + (c.flags === 1 ? "flag" : "flags") + " in " + scope);
+    if (sel.streak) out.push("your practice streak (" + c.days + " " + (c.days === 1 ? "day" : "days") + " of history)");
+    return {lines:out, total:c.ticks + c.sets + c.answers + c.flags + c.days};
+  }
+  function toast(msg) { var t = $("q-toast"); if (!t) { t = document.createElement("div"); t.id = "q-toast"; t.className = "q-toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
+    t.textContent = msg; t.dataset.show = "true"; clearTimeout(t._h); t._h = setTimeout(function () { t.dataset.show = "false"; }, 3500); }
+
+  function openSettings(section) {
+    var ov = ovShell("ALL"), mode = themeMode();
+    RS = RS || {ticks:false, answers:false, flags:false, streak:false, mods:{URO:true, ENI:true, GIL:true}};
+    function tog(key, label, hint) { return '<label class="q-row-t"><span><b>' + label + "</b><small>" + hint + '</small></span><input type="checkbox" class="q-switch" data-rs="' + key + '"' + (RS[key] ? " checked" : "") + "></label>"; }
+    ov.innerHTML = '<div class="q-ovtop"><div class="in"><button class="q-icon" data-x aria-label="Close settings"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button><div class="q-count" style="flex:1">Settings</div></div></div>' +
+      '<div class="q-ovbody" id="q-sbody"><div class="in q-settings">' +
+      '<p class="q-slabel">Appearance</p><div class="q-sgroup"><div class="q-srow"><span><b>Theme</b><small>Light, dark, or match your phone</small></span></div>' +
+      '<div class="q-seg" role="radiogroup" aria-label="Theme">' + [["light","Light"],["dark","Dark"],["system","Match phone"]].map(function (o) { return '<button role="radio" aria-checked="' + (mode === o[0]) + '" data-mode="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div></div>" +
+      '<p class="q-slabel">Help</p><div class="q-sgroup"><details class="q-howto"' + (section === "help" ? " open" : "") + '><summary><span><b>How it works</b><small>Ticking, colours, questions and marking</small></span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></summary>' + howItWorksHtml() + "</details></div>" +
+      '<p class="q-slabel">Your data</p><div class="q-sgroup"><button class="q-srow q-link" data-bk="export"><span><b>Save a backup</b><small>Ticks, flags and question answers in one file</small></span><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></button>' +
+      '<button class="q-srow q-link" data-bk="import"><span><b>Restore from a backup</b><small>Adds anything missing; never removes progress</small></span><svg viewBox="0 0 24 24"><path d="M12 21V9M7 14l5-5 5 5M5 3h14"/></svg></button></div>' +
+      '<p class="q-slabel bad">Danger zone</p><div class="q-sgroup q-danger"><div class="q-srow"><span><b>Reset progress</b><small>Choose what to clear. You confirm three times before anything is deleted.</small></span></div>' +
+      '<div class="q-sub">What to clear</div>' + tog("ticks", "Session ticks", "The ticks on Today and Plan") + tog("answers", "Question answers and scores", "Answers, marks and results for question sets") + tog("flags", "Flags", "Sessions flagged for another pass") + tog("streak", "Practice streak", "The days-practised history") +
+      '<div class="q-sub">Which modules</div><div class="q-chips">' + ["URO","ENI","GIL"].map(function (m) { return '<label class="q-mchip mod-' + m + '"><input type="checkbox" data-rm="' + m + '"' + (RS.mods[m] ? " checked" : "") + "><span>" + m + "</span></label>"; }).join("") + '</div><p class="q-hint2">The streak covers all modules. Mocks and OSPE only reset when all three modules are selected.</p>' +
+      '<button class="q-btn q-dangerbtn" data-reset-go>Reset selected…</button></div>' +
+      '<p class="q-foot2">Nicole\'s revision · Everything saves on this phone only.</p></div></div>';
+    ov.querySelector("[data-x]").onclick = closeOv;
+    [].forEach.call(ov.querySelectorAll("[data-mode]"), function (b) { b.onclick = function () { setTheme(b.dataset.mode); [].forEach.call(ov.querySelectorAll("[data-mode]"), function (x) { x.setAttribute("aria-checked", x === b); }); }; });
+    [].forEach.call(ov.querySelectorAll("[data-rs]"), function (x) { x.onchange = function () { RS[x.dataset.rs] = x.checked; updGo(); }; });
+    [].forEach.call(ov.querySelectorAll("[data-rm]"), function (x) { x.onchange = function () { RS.mods[x.dataset.rm] = x.checked; updGo(); }; });
+    ov.querySelector('[data-bk="export"]').onclick = function () { $("bk-export").click(); toast("Backup saved to your downloads."); };
+    ov.querySelector('[data-bk="import"]').onclick = function () { $("bk-import").click(); };
+    var go = ov.querySelector("[data-reset-go]");
+    function updGo() { var anyWhat = RS.ticks || RS.answers || RS.flags || RS.streak, anyMod = RS.mods.URO || RS.mods.ENI || RS.mods.GIL || (RS.streak && !RS.ticks && !RS.answers && !RS.flags);
+      go.disabled = !(anyWhat && anyMod); go.textContent = go.disabled ? "Choose what to reset" : "Reset selected…"; }
+    updGo();
+    go.onclick = confirmStep1;
+  }
+  // step 1: say exactly what will go
+  function confirmStep1() {
+    var sm = summaryLines(RS);
+    if (!sm.total) { sheet('<h3>Nothing to reset</h3><p>There is no saved progress in what you selected.</p><div class="q-row"><button class="q-btn wide" data-close>OK</button></div>', "ALL").querySelector("[data-close]").onclick = function () { $("q-sheet").hidden = true; }; return; }
+    var sh = sheet('<div class="q-warnicon" aria-hidden="true">!</div><h3>Reset this progress?</h3><p>This permanently clears:</p><ul class="q-clear">' + sm.lines.map(function (l) { return "<li>" + l + "</li>"; }).join("") + '</ul><p>Everything else stays as it is.</p><div class="q-row"><button class="q-btn wide" data-close>Keep my progress</button><button class="q-btn q-dangerbtn wide" data-next>Continue</button></div>', "ALL");
+    sh.querySelector("[data-close]").onclick = function () { sh.hidden = true; };
+    sh.querySelector("[data-next]").onclick = confirmStep2;
+  }
+  // step 2: offer a backup first
+  function confirmStep2() {
+    var sh = sheet('<h3>Save a backup first?</h3><p>A reset can\'t be undone. A backup file lets you bring this progress back later with Restore.</p><div class="q-row"><button class="q-btn pri" data-bk>Save a backup, then continue</button></div><div class="q-row"><button class="q-btn wide" data-close>Cancel</button><button class="q-btn wide" data-skip>Continue without a backup</button></div>', "ALL");
+    sh.querySelector("[data-close]").onclick = function () { sh.hidden = true; };
+    sh.querySelector("[data-bk]").onclick = function () { $("bk-export").click(); confirmStep3(true); };
+    sh.querySelector("[data-skip]").onclick = function () { confirmStep3(false); };
+  }
+  // step 3: type RESET to unlock
+  function confirmStep3(backedUp) {
+    var sh = sheet('<div class="q-warnicon" aria-hidden="true">!</div><h3>Last check</h3><p>' + (backedUp ? "Backup saved. " : "") + 'Type <b>RESET</b> below to permanently clear what you selected.</p><input type="text" id="q-reset-word" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="RESET" aria-label="Type RESET to confirm"><div class="q-row"><button class="q-btn wide" data-close>Cancel</button><button class="q-btn q-dangerbtn wide" data-final disabled>Reset now</button></div>', "ALL");
+    var inp = sh.querySelector("#q-reset-word"), fin = sh.querySelector("[data-final]");
+    inp.oninput = function () { fin.disabled = inp.value.trim().toUpperCase() !== "RESET"; };
+    inp.onkeydown = function (e) { if (e.key === "Enter" && !fin.disabled) fin.click(); };
+    setTimeout(function () { inp.focus(); }, 50);
+    sh.querySelector("[data-close]").onclick = function () { sh.hidden = true; };
+    fin.onclick = function () { var sm = summaryLines(RS); doReset(RS); sh.hidden = true; RS = null; openSettings(); toast("Reset done. " + sm.lines.length + " " + (sm.lines.length === 1 ? "item" : "items") + " cleared."); };
   }
 
   // ---------- player ----------
@@ -370,7 +466,7 @@
       for (var k2 = 0; k2 < 7 && !pick; k2++) { var iso2 = addDays(mon, k2); if (dayFor(iso2).blocks || iso2 === today()) pick = iso2; }
       renderToday(pick || tg); return; }
     if ((x = e.target.closest("[data-od]"))) { S.odOpen = !S.odOpen; save(); renderToday(); return; }
-    if ((x = e.target.closest("[data-theme]"))) { $("theme").click(); return; }
+    if ((x = e.target.closest("[data-settings]"))) { openSettings(); return; }
   });
   document.addEventListener("change", function (e) {
     var x = e.target; if (!x.matches || !x.matches("[data-tick]") || x.closest("#q-ov")) return;
@@ -379,7 +475,7 @@
   });
   document.addEventListener("keydown", function (e) {
     if (!$("q-sheet").hidden) { if (e.key === "Escape") $("q-sheet").hidden = true; return; }
-    if (!P) { if (e.key === "Escape" && R) closeOv(); return; }
+    if (!P) { if (e.key === "Escape" && !$("q-ov").hidden) closeOv(); return; }
     var tag = (e.target.tagName || "").toLowerCase(); if (tag === "textarea" || tag === "input" || tag === "select") return;
     var b = BLOCKS[P.key];
     if (e.key === "ArrowRight" && P.i < b.questions.length - 1) { P.i++; renderPlayer(); }
@@ -401,6 +497,7 @@
     ["a","marked","days"].forEach(function (k) { var src = q[k] || {}; S[k] = S[k] || {}; Object.keys(src).forEach(function (id) { if (!(id in S[k])) { S[k][id] = src[id]; n++; } }); });
     save(); planDirty = true; refresh(); return n; };
 
+  $("theme").addEventListener("click", function () { openSettings(); });
   var start = "today"; try { start = sessionStorage.getItem("nicole-tab") || "today"; } catch (e) {}
   render(); // recolour Plan now that session states exist
   showTab(TABS.indexOf(start) >= 0 ? start : "today");

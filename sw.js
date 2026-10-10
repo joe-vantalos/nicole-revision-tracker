@@ -6,7 +6,7 @@
      anything else       -> network
 */
 
-var VERSION = "v2";
+var VERSION = "v3";
 var SHELL = "shell-" + VERSION;
 var FONTS = "fonts-" + VERSION;
 
