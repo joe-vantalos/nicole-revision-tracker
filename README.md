@@ -9,6 +9,9 @@ address bar, works with no signal, and keeps her progress on her phone.
     manifest.webmanifest    name, icon and colours the phone reads when installing
     qb.js                   Today / Practice / Progress tabs, question player, settings
     mark.js                 lenient marking for fill-in-the-blank answers
+    config.js               Supabase address and public key; empty = no accounts
+    account.js              sign-in (Google, Microsoft, email code); see SETUP-ACCOUNTS.md
+    vendor/                 Supabase's browser library (MIT licence), loaded only when accounts are on
     questions.js            the question bank and timetable (generated data)
     sw.js                   service worker — makes it load instantly and work offline
     icons/                  home screen icons (icons/src/ holds the SVG originals)

@@ -349,6 +349,7 @@
     function tog(key, label, hint) { return '<label class="q-row-t"><span><b>' + label + "</b><small>" + hint + '</small></span><input type="checkbox" class="q-switch" data-rs="' + key + '"' + (RS[key] ? " checked" : "") + "></label>"; }
     ov.innerHTML = '<div class="q-ovtop"><div class="in"><button class="q-icon" data-x aria-label="Close settings"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button><div class="q-count" style="flex:1">Settings</div></div></div>' +
       '<div class="q-ovbody" id="q-sbody"><div class="in q-settings">' +
+      (window.Account && Account.enabled ? '<p class="q-slabel">Account</p><div class="q-sgroup" id="q-acct"></div>' : "") +
       '<p class="q-slabel">Appearance</p><div class="q-sgroup"><div class="q-srow"><span><b>Theme</b><small>Light, dark, or match your phone</small></span></div>' +
       '<div class="q-seg" role="radiogroup" aria-label="Theme">' + [["light","Light"],["dark","Dark"],["system","Match phone"]].map(function (o) { return '<button role="radio" aria-checked="' + (mode === o[0]) + '" data-mode="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>" +
       '<div class="q-srow"><span><b>Colour</b><small>' + ACCENTS.filter(function (o) { return o[0] === accent; })[0][1] + '</small></span></div>' +
@@ -362,6 +363,7 @@
       '<button class="q-btn q-dangerbtn" data-reset-go>Reset selected…</button></div>' +
       '<p class="q-foot2">Nicole\'s revision · Everything saves on this phone only.</p></div></div>';
     ov.querySelector("[data-x]").onclick = closeOv;
+    if ($("q-acct")) Account.renderInto($("q-acct"));
     [].forEach.call(ov.querySelectorAll("[data-accent]"), function (b) { b.onclick = function () { setAccent(b.dataset.accent);
       [].forEach.call(ov.querySelectorAll("[data-accent]"), function (x) { x.setAttribute("aria-checked", x === b); });
       b.parentNode.previousElementSibling.querySelector("small").textContent = b.getAttribute("aria-label"); }; });
@@ -583,6 +585,8 @@
   setInterval(checkDate, 60000);
   document.addEventListener("visibilitychange", function () { if (!document.hidden) checkDate(); });
   window.addEventListener("focus", checkDate);
+
+  window.qbToast = toast;
 
   // backup: include question answers alongside ticks
   window.qbSnapshot = function () { return S; };

@@ -7,7 +7,7 @@
      anything else       -> network
 */
 
-var VERSION = "v5";
+var VERSION = "v6";
 var SHELL = "shell-" + VERSION;
 var FONTS = "fonts-" + VERSION;
 
@@ -16,6 +16,9 @@ var PRECACHE = [
   "./index.html",
   "./manifest.webmanifest",
   "./questions.js",
+  "./config.js",
+  "./account.js",
+  "./vendor/supabase-2.117.2.js",
   "./mark.js",
   "./qb.js",
   "./icons/icon-180.png",
@@ -47,7 +50,7 @@ self.addEventListener("activate", function (e) {
   );
 });
 
-var APP_FILES = ["index.html", "mark.js", "qb.js", "questions.js"];
+var APP_FILES = ["index.html", "config.js", "account.js", "mark.js", "qb.js", "questions.js"];
 
 function isFont(url) {
   return url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com";
