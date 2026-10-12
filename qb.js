@@ -20,7 +20,6 @@
   function addDays(iso,n) { var x=new Date(iso+"T12:00:00"); x.setDate(x.getDate()+n); return isoOf(x); }
   // Always the device's local date, re-read on every use so it rolls over at midnight.
   function today() { return isoOf(new Date()); }
-  function norm(s) { return String(s).toLowerCase().replace(/[^a-z0-9α-ω]+/g, ""); }
 
   var BLOCKS = {}, DAYOF = {};
   DATA.days.forEach(function (d) { d.blocks.forEach(function (b) { BLOCKS[b.key] = b; DAYOF[b.key] = d.date; }); });
@@ -47,7 +46,7 @@
 
   function tick(id, on) {
     if (on) done[id] = 1; else delete done[id];
-    store(KEY, done); logActivity(); planDirty = true; updBadge();
+    store(KEY, done); if (on) logActivity(); planDirty = true; updBadge();
   }
 
   // ---------- answers + marking ----------
@@ -58,7 +57,11 @@
     if (q.type === "fill") return !!(a.text && a.text.trim());
     return !!a.text && Object.keys(a.text).some(function (k) { return a.text[k] && a.text[k].trim(); }); }
   function maxPts(q) { if (q.type === "emq") return q.items.length; if (q.type === "sa") return q.parts.reduce(function (x, p) { return x + (p.marks || 0); }, 0); if (!q.type) return q.checklist.length; return 1; }
-  function fillOk(q) { var a = S.a[q.id] || {}; if (a.override) return true; var v = a.text || ""; return !!norm(v) && [q.answer].concat(q.accept || []).some(function (x) { return norm(x) === norm(v); }); }
+  // marking rules live in mark.js; override is the student's own call (true = right, false = wrong)
+  function fillMatch(q) { var a = S.a[q.id] || {};
+    if (a.override === true || a.override === false) return {ok: a.override, you: true};
+    return window.QBMark.match(a.text || "", [q.answer].concat(q.accept || [])); }
+  function fillOk(q) { return fillMatch(q).ok; }
   function selfMarked(q) { return q.type === "sa" || !q.type; }
   function grade(q) { var a = S.a[q.id] || {}, mx = maxPts(q);
     if (!answered(q) && !selfMarked(q)) return {pts:0,max:mx,state:"skip"};
@@ -119,13 +122,25 @@
 
   // ---------- TODAY ----------
   var curDate = null, planDirty = false;
+  // Streak: consecutive days with something done. Timetabled rest days pause it: they neither add a day
+  // nor break the run, even if work is done on them. Today only counts once something is done.
+  function isRest(iso) { return dayFor(iso).kind === "off"; }
+  function streakDays() {
+    var t = today(), n = 0;
+    for (var j = 0; j < 400; j++) { var d = addDays(t, -j);
+      if (isRest(d)) continue;
+      if (S.days[d]) n++; else if (j === 0) continue; else break; }
+    return n;
+  }
   function heroHtml() {
     var ticked = Object.keys(done).length, sets = 0, setsDone = 0, pts = 0, max = 0;
     Object.keys(BLOCKS).forEach(function (k) { var i = blockInfo(BLOCKS[k]); sets++; if (i.marked) { setsDone++; pts += i.pts; max += i.max; } });
     var pct = max ? Math.round(100 * pts / max) : 0, t = today(), dots = "", streak = 0;
-    for (var k = 6; k >= 0; k--) { var iso = addDays(t, -k), f = fmt(iso); dots += '<span class="' + (S.days[iso] ? "on" : "") + (k === 0 ? " today" : "") + '" title="' + f.long + '">' + f.w[0] + "</span>"; }
-    for (var j = 0; ; j++) { var d = addDays(t, -j); if (S.days[d]) streak++; else if (j === 0) continue; else break; }
-    return '<div class="q-hero"><div><div class="q-big">' + streak + " day" + (streak === 1 ? "" : "s") + '</div><div class="q-lbl">practice streak · ' + ticked + " of " + ALL.length + " sessions ticked · " + setsDone + " of " + sets + ' question sets marked</div><div class="q-streak" aria-label="Days practised this week">' + dots + "</div></div>" +
+    for (var k = 6; k >= 0; k--) { var iso = addDays(t, -k), f = fmt(iso), rest = isRest(iso);
+      dots += '<span class="' + (rest ? "rest" : S.days[iso] ? "on" : "") + (k === 0 ? " today" : "") + '" title="' + f.long + (rest ? " · rest day" : "") + '">' + f.w[0] + "</span>"; }
+    streak = streakDays();
+    var restToday = isRest(t);
+    return '<div class="q-hero"><div><div class="q-big">' + streak + " day" + (streak === 1 ? "" : "s") + '</div><div class="q-lbl">' + (restToday ? '<span class="q-paused">Streak paused, today is for resting</span> · ' : "practice streak · ") + ticked + " of " + ALL.length + " sessions ticked · " + setsDone + " of " + sets + ' question sets marked</div><div class="q-streak" aria-label="Days practised this week">' + dots + "</div></div>" +
       '<div class="q-ring" style="--p:' + pct + '"><div><b>' + (max ? pct + "%" : "–") + "</b><small>AVG SCORE</small></div></div></div>";
   }
   function weekHtml(date) {
@@ -277,6 +292,8 @@
       "<li>A session turns <span class=\"warn\">amber</span> when you've marked its questions but haven't ticked it, and <span class=\"bad\">red</span> once its day has passed unticked. Red ones collect under Overdue at the top of Today.</li>" +
       "<li>Questions come one at a time. Nothing is marked until you press <b>Finish and mark</b> at the end of the set.</li>" +
       "<li>Single best answer, extended matching and fill in the blank mark themselves. For short answers and OSPE stations you mark yourself against the mark scheme.</li>" +
+      "<li>Fill in the blank forgives small typos, British or American spelling and plurals, and shows the correct spelling. It won't accept a different real term (hypo for hyper, ilium for ileum), and numbers must be exact. You can overrule it either way.</li>" +
+      "<li>Your streak counts days you did something. Rest days pause it: they don't add a day and don't break it.</li>" +
       "<li>Each first-pass set covers every learning outcome for its topic; extra questions needed for that are labelled LO top-up.</li>" +
       "<li>Everything saves on this phone. Save a backup now and then (Settings → Your data).</li></ul></div>";
   }
@@ -422,12 +439,12 @@
     var nx = ov.querySelector("[data-next]"), fn = ov.querySelector("[data-finish]");
     if (nx) nx.onclick = function () { P.i++; renderPlayer(); };
     if (fn) fn.onclick = confirmFinish;
-    [].forEach.call(ov.querySelectorAll("[data-sba]"), function (x) { x.onclick = function () { var a = A(q.id), v = +x.dataset.sba; a.sel = a.sel === v ? null : v; logActivity();
+    [].forEach.call(ov.querySelectorAll("[data-sba]"), function (x) { x.onclick = function () { var a = A(q.id), v = +x.dataset.sba; a.sel = a.sel === v ? null : v; if (a.sel != null) logActivity(); else save();
       [].forEach.call(ov.querySelectorAll("[data-sba]"), function (y) { var on = a.sel === +y.dataset.sba; y.classList.toggle("sel", on); y.setAttribute("aria-checked", on); }); updFinish(); }; });
-    [].forEach.call(ov.querySelectorAll("[data-emq]"), function (x) { x.onchange = function () { var a = A(q.id); a.sel = a.sel || {}; if (x.value === "") delete a.sel[x.dataset.emq]; else a.sel[x.dataset.emq] = +x.value; logActivity(); updFinish(); }; });
+    [].forEach.call(ov.querySelectorAll("[data-emq]"), function (x) { x.onchange = function () { var a = A(q.id); a.sel = a.sel || {}; if (x.value === "") { delete a.sel[x.dataset.emq]; save(); } else { a.sel[x.dataset.emq] = +x.value; logActivity(); } updFinish(); }; });
     var fi = ov.querySelector("[data-fill]");
-    if (fi) { fi.oninput = function () { A(q.id).text = fi.value; save(); updFinish(); }; fi.onchange = logActivity; fi.onkeydown = function (e) { if (e.key === "Enter") { e.preventDefault(); (nx || fn).click(); } }; }
-    [].forEach.call(ov.querySelectorAll("[data-sa]"), function (x) { x.oninput = function () { var a = A(q.id); a.text = a.text || {}; a.text[x.dataset.sa] = x.value; save(); updFinish(); }; x.onchange = logActivity; });
+    if (fi) { fi.oninput = function () { A(q.id).text = fi.value; save(); updFinish(); }; fi.onchange = function () { if (fi.value.trim()) logActivity(); }; fi.onkeydown = function (e) { if (e.key === "Enter") { e.preventDefault(); (nx || fn).click(); } }; }
+    [].forEach.call(ov.querySelectorAll("[data-sa]"), function (x) { x.oninput = function () { var a = A(q.id); a.text = a.text || {}; a.text[x.dataset.sa] = x.value; save(); updFinish(); }; x.onchange = function () { if (x.value.trim()) logActivity(); }; });
   }
   function updFinish() { var b = BLOCKS[P.key], f = $("q-ov").querySelector("[data-finish]"); if (f) f.textContent = "Finish and mark · " + b.questions.filter(answered).length + "/" + b.questions.length; }
   function sheet(html, mod) { var sh = $("q-sheet"); sh.className = "q-sheet qb mod-" + mod; sh.innerHTML = '<div class="q-sbox" role="dialog">' + html + "</div>"; sh.hidden = false; sh.onclick = function (e) { if (e.target === sh) sh.hidden = true; }; return sh; }
@@ -462,9 +479,12 @@
         h += '<div class="q-item"><div class="p">' + (i + 1) + ". " + esc(it.prompt) + '</div><div class="q-yours">' + (ok ? '<span class="ok-t">✓</span> ' + esc(q.options[it.answer]) : (v == null ? '<span class="sk-t">No answer</span>' : '<span class="no-t">✗</span> ' + esc(q.options[v])) + " · <b>Answer:</b> " + esc(q.options[it.answer])) + "</div></div>"; });
       h += '<div class="q-exp">' + esc(q.explanation) + "</div>";
     } else if (q.type === "fill") {
-      var ok = fillOk(q);
+      var fm = fillMatch(q), ok = fm.ok, ctl = "";
+      if (fm.you) ctl = '<div class="q-self"><span class="q-muted">You marked this ' + (ok ? "right" : "wrong") + '.</span> <button class="q-btn sm" data-override="' + q.id + '" data-v="">Undo</button></div>';
+      else if (ok && !fm.exact) ctl = '<div class="q-self"><span class="q-close">Close enough. Correct spelling: <b>' + esc(fm.target) + '</b></span> <button class="q-btn sm" data-override="' + q.id + '" data-v="0">Count it wrong</button></div>';
+      else if (!ok && a.text) ctl = '<div class="q-self"><button class="q-btn sm" data-override="' + q.id + '" data-v="1">My wording means the same</button></div>';
       h += '<p class="q-stem">' + esc(q.stem) + '</p><div class="q-yours"><b>Yours:</b> ' + (a.text ? esc(a.text) : '<span class="sk-t">blank</span>') + (ok ? ' <span class="ok-t">✓</span>' : "") + '</div><div class="q-yours"><b>Answer:</b> ' + esc(q.answer) + (q.accept && q.accept.length ? ' <span class="q-muted">(also: ' + esc(q.accept.join(", ")) + ")</span>" : "") + "</div>" +
-        (!ok && a.text ? '<div class="q-self"><button class="q-btn sm" data-override="' + q.id + '">My wording means the same</button></div>' : "") + '<div class="q-exp">' + esc(q.explanation) + "</div>";
+        ctl + '<div class="q-exp">' + esc(q.explanation) + "</div>";
     } else if (q.type === "sa") {
       h += '<p class="q-stem">' + esc(q.stem) + "</p>";
       q.parts.forEach(function (p, i) { var y = ((a.text || {})[i] || "").trim();
@@ -501,7 +521,7 @@
     rt.onclick = function () { if (rt.dataset.c !== "1") { rt.dataset.c = "1"; rt.textContent = "Tap again to clear answers"; return; }
       b.questions.forEach(function (q) { delete S.a[q.id]; }); delete S.marked[b.key]; S.pos[b.key] = 0; save(); R = null; P = {key:b.key, i:0}; renderPlayer(); };
     [].forEach.call(ov.querySelectorAll("[data-score]"), function (x) { x.onclick = function () { A(x.dataset.score).score = +x.dataset.v; save(); keep(); }; });
-    [].forEach.call(ov.querySelectorAll("[data-override]"), function (x) { x.onclick = function () { A(x.dataset.override).override = true; save(); keep(); }; });
+    [].forEach.call(ov.querySelectorAll("[data-override]"), function (x) { x.onclick = function () { var a = A(x.dataset.override); if (x.dataset.v === "") delete a.override; else a.override = x.dataset.v === "1"; save(); keep(); }; });
     [].forEach.call(ov.querySelectorAll("[data-stick]"), function (x) { x.onchange = function () { var a = A(x.dataset.stick); a.ticks = a.ticks || {}; a.ticks[x.dataset.i] = x.checked; a.score = Object.keys(a.ticks).filter(function (k) { return a.ticks[k]; }).length; save(); keep(); }; });
     [].forEach.call(ov.querySelectorAll("[data-tick]"), function (x) { x.onchange = function () { tick(x.dataset.tick, x.checked); keep(); }; });
   }
@@ -510,7 +530,7 @@
   var TABS = ["today", "plan", "practice", "progress"], curTab = "today";
   function updBadge() { var t = today(), n = Object.keys(SESS).filter(function (id) { return SESS[id].due < t && !done[id]; }).length, el = $("nav-od");
     el.hidden = !n; el.textContent = n > 99 ? "99+" : n; el.parentNode.setAttribute("aria-label", "Today" + (n ? ", " + n + " overdue" : "")); }
-  window.qbOnTick = function () { updBadge(); logActivity(); };
+  window.qbOnTick = function (on) { updBadge(); if (on) logActivity(); };
   function refresh() {
     updBadge();
     if (curTab === "today") renderToday();

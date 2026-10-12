@@ -7,6 +7,9 @@ address bar, works with no signal, and keeps her progress on her phone.
 
     index.html              the app (the original tracker plus the app plumbing)
     manifest.webmanifest    name, icon and colours the phone reads when installing
+    qb.js                   Today / Practice / Progress tabs, question player, settings
+    mark.js                 lenient marking for fill-in-the-blank answers
+    questions.js            the question bank and timetable (generated data)
     sw.js                   service worker — makes it load instantly and work offline
     icons/                  home screen icons (icons/src/ holds the SVG originals)
 
@@ -64,7 +67,7 @@ restore it at the new one.
 ## Updating it later
 
 Edit `index.html` (the `DATA` array near the top of the `<script>` holds every
-session), `qb.js` or `questions.js` and re-upload. Her phone picks the change
+session), `qb.js`, `mark.js` or `questions.js` and re-upload. Her phone picks the change
 up on the launch after next: the service worker serves the cached copy
 instantly, fetches the new one in the background, and shows a "Reload" pill
 when it lands. Those three files are always re-checked; icons and the manifest

@@ -1103,6 +1103,9 @@
   .q-streak span { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 10.5px; font-weight: 800; color: var(--ink-3); border: 2px solid var(--hair); }
   .q-streak span.on { background: var(--sage); border-color: var(--sage); color: var(--on-accent); }
   .q-streak span.today { border-color: var(--sage); }
+  .q-streak span.rest { border-style: dashed; color: var(--ink-3); opacity: .7; }
+  .q-streak span.rest.today { border-color: var(--sage); opacity: 1; }
+  .q-paused { color: var(--sage-deep); }
   .q-ring { --p: 0; width: 82px; height: 82px; border-radius: 50%; background: conic-gradient(var(--sage) calc(var(--p) * 1%), var(--hair) 0); display: grid; place-items: center; }
   .q-ring > div { width: 64px; height: 64px; border-radius: 50%; background: var(--panel); display: grid; place-items: center; align-content: center; text-align: center; line-height: 1.05; }
   .q-ring b { font-family: var(--display); font-size: 19px; } .q-ring small { display: block; font-size: 9px; color: var(--ink-3); font-weight: 800; letter-spacing: .04em; }
@@ -1177,6 +1180,7 @@
 
   /* day overview (top of Today) */
   .q-day { background: var(--panel); border-radius: 22px; box-shadow: var(--nm-out); padding: 16px 16px 14px; margin-bottom: 16px; border-top: 4px solid var(--sage); }
+  .q-close { font-size: 13px; color: var(--ink-2); }
   .q-day .q-bar i { background: var(--sage); }
   .q-dayhd { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
   .q-dayhd h2 { font-size: 21px; }
@@ -1866,7 +1870,7 @@
     var stc = stCls(id).trim(); if (stc) row.classList.add(stc);
     var oldNote = row.querySelector(".st-note"); if (oldNote) oldNote.parentNode.removeChild(oldNote);
     if (stc) row.querySelector(".item-title").insertAdjacentHTML("beforeend", stNote(id));
-    if (window.qbOnTick) window.qbOnTick();
+    if (window.qbOnTick) window.qbOnTick(cb.checked);
     updateCounts();
     updateWeek(row.closest(".week").getAttribute("data-week"));
     if (state.hideDone && cb.checked) { setTimeout(render, 260); }
@@ -2082,6 +2086,7 @@
   renderHint();
 </script>
 <script src="questions.js"></script>
+<script src="mark.js"></script>
 <script src="qb.js"></script>
 </body>
 </html>
