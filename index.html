@@ -115,7 +115,63 @@
     --t-pie: #BCC375;
   }
 
-  :root[data-mod="URO"] { --accent: var(--sage); }
+  /* URO's module colour stays green whatever colour theme is chosen; --sage is the app accent */
+  :root { --uro: #6F9163; --uro-soft: #DCE7D4; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --uro: #A4C793; --uro-soft: #3A4A33; } }
+  :root[data-theme="dark"] { --uro: #A4C793; --uro-soft: #3A4A33; }
+
+  /* ---- colour themes (Settings → Colour). Green is the default above.
+     Each theme sets the same tokens in light and dark; the dark rules carry one more
+     selector so they beat the light ones. ---- */
+  :root[data-accent="blue"] {
+    --bg: #EAEFF3; --panel: #F7FAFC; --ink: #26303A; --ink-2: #586674; --ink-3: #8C99A6; --hair: #D7E0E8;
+    --groove: rgba(38, 48, 58, 0.09); --sh-d: rgba(120, 140, 160, 0.26);
+    --sage: #5A88B0; --sage-deep: #426F96; --sage-soft: #D5E4F1;
+  }
+  :root[data-accent="pink"] {
+    --bg: #F5ECEC; --panel: #FCF7F7; --ink: #3A2C30; --ink-2: #725E63; --ink-3: #A48F94; --hair: #EADCDD;
+    --groove: rgba(58, 44, 48, 0.09); --sh-d: rgba(170, 140, 145, 0.26);
+    --sage: #C0708A; --sage-deep: #A25470; --sage-soft: #F2DAE1;
+  }
+  :root[data-accent="purple"] {
+    --bg: #EFEDF4; --panel: #FAF9FD; --ink: #2F2B3A; --ink-2: #645E74; --ink-3: #9790A8; --hair: #E0DCEA;
+    --groove: rgba(47, 43, 58, 0.09); --sh-d: rgba(140, 132, 165, 0.26);
+    --sage: #8A78BA; --sage-deep: #6A5A9E; --sage-soft: #E3DDF2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root[data-accent="blue"]:not([data-theme="light"]) {
+      --bg: #1C2229; --panel: #232A32; --ink: #E4EAF0; --ink-2: #A3B0BD; --ink-3: #76838F; --hair: #33404C;
+      --groove: rgba(0, 0, 0, 0.28); --sh-d: rgba(0, 0, 0, 0.30);
+      --sage: #8DB8DE; --sage-deep: #A9CBEA; --sage-soft: #2D3E50;
+    }
+    :root[data-accent="pink"]:not([data-theme="light"]) {
+      --bg: #2A2124; --panel: #32282B; --ink: #F0E6E8; --ink-2: #BCA8AD; --ink-3: #8D7A7F; --hair: #46383C;
+      --groove: rgba(0, 0, 0, 0.28); --sh-d: rgba(0, 0, 0, 0.30);
+      --sage: #E39AAE; --sage-deep: #EDB3C3; --sage-soft: #4E3239;
+    }
+    :root[data-accent="purple"]:not([data-theme="light"]) {
+      --bg: #22202A; --panel: #2A2733; --ink: #E9E6F0; --ink-2: #AEA7BE; --ink-3: #807A90; --hair: #3B3748;
+      --groove: rgba(0, 0, 0, 0.28); --sh-d: rgba(0, 0, 0, 0.30);
+      --sage: #B3A3DE; --sage-deep: #C7BAE8; --sage-soft: #3B3452;
+    }
+  }
+  :root[data-accent="blue"][data-theme="dark"] {
+    --bg: #1C2229; --panel: #232A32; --ink: #E4EAF0; --ink-2: #A3B0BD; --ink-3: #76838F; --hair: #33404C;
+    --groove: rgba(0, 0, 0, 0.28); --sh-d: rgba(0, 0, 0, 0.30);
+    --sage: #8DB8DE; --sage-deep: #A9CBEA; --sage-soft: #2D3E50;
+  }
+  :root[data-accent="pink"][data-theme="dark"] {
+    --bg: #2A2124; --panel: #32282B; --ink: #F0E6E8; --ink-2: #BCA8AD; --ink-3: #8D7A7F; --hair: #46383C;
+    --groove: rgba(0, 0, 0, 0.28); --sh-d: rgba(0, 0, 0, 0.30);
+    --sage: #E39AAE; --sage-deep: #EDB3C3; --sage-soft: #4E3239;
+  }
+  :root[data-accent="purple"][data-theme="dark"] {
+    --bg: #22202A; --panel: #2A2733; --ink: #E9E6F0; --ink-2: #AEA7BE; --ink-3: #807A90; --hair: #3B3748;
+    --groove: rgba(0, 0, 0, 0.28); --sh-d: rgba(0, 0, 0, 0.30);
+    --sage: #B3A3DE; --sage-deep: #C7BAE8; --sage-soft: #3B3452;
+  }
+
+  :root[data-mod="URO"] { --accent: var(--uro); }
   :root[data-mod="ENI"] { --accent: var(--clay); }
   :root[data-mod="GIL"] { --accent: var(--ochre); }
   :root { --accent: var(--sage); }
@@ -998,7 +1054,7 @@
   .pill[data-show="false"] { visibility: hidden; pointer-events: none; }
   .mod-ENI { --m: var(--clay); --ms: var(--clay-soft); }
   .mod-GIL { --m: var(--ochre); --ms: var(--ochre-soft); }
-  .mod-URO { --m: var(--sage); --ms: var(--sage-soft); }
+  .mod-URO { --m: var(--uro); --ms: var(--uro-soft); }
   .mod-OSPE, .mod-ALL { --m: var(--plum); --ms: var(--plum-soft); }
 
   /* ---------- bottom nav ---------- */
@@ -1118,6 +1174,27 @@
   .q-mod { background: var(--panel); border-radius: 18px; box-shadow: var(--nm-out); padding: 14px; border-top: 4px solid var(--m); }
   .q-mod p { margin: 6px 0 0; font-size: 13.5px; color: var(--ink-2); }
   .q-bar { height: 8px; border-radius: 9px; background: var(--hair); overflow: hidden; } .q-bar i { display: block; height: 100%; background: var(--m); }
+
+  /* day overview (top of Today) */
+  .q-day { background: var(--panel); border-radius: 22px; box-shadow: var(--nm-out); padding: 16px 16px 14px; margin-bottom: 16px; border-top: 4px solid var(--sage); }
+  .q-day .q-bar i { background: var(--sage); }
+  .q-dayhd { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .q-dayhd h2 { font-size: 21px; }
+  .q-daypct { font-size: 12.5px; font-weight: 800; color: var(--ink-2); white-space: nowrap; }
+  .q-todos { display: grid; margin: 10px 0 4px; }
+  .q-todo { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 2px; text-align: left; color: var(--ink); }
+  .q-todo + .q-todo { border-top: 1px solid var(--hair); }
+  .q-todo .q-tick { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--ink-3); display: grid; place-items: center; font-weight: 800; font-size: 14px; line-height: 1; }
+  .q-todo .q-tick svg { width: 14px; height: 14px; fill: none; stroke: var(--on-accent); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  .q-todo.is-done .q-tick { background: var(--sage); border-color: var(--sage); }
+  .q-todo.is-done b { color: var(--ink-2); }
+  .q-todo.is-bad .q-tick { border-color: var(--bad); color: var(--bad); }
+  .q-tdt { flex: 1; display: grid; gap: 1px; min-width: 0; }
+  .q-tdt b { font-size: 15px; } .q-tdt small { font-size: 12.5px; color: var(--ink-2); }
+  .q-todo > svg { width: 16px; height: 16px; flex: 0 0 auto; fill: none; stroke: var(--ink-3); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .q-next { display: block; width: 100%; margin-top: 10px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .q-alldone { margin: 10px 0 0; font-weight: 800; color: var(--sage-deep); }
+  .q-count2 { margin: 10px 0 0; font-size: 12.5px; font-weight: 700; color: var(--ink-3); }
   .q-notes ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 14.5px; }
   #tab-progress .utility { padding-inline: 0; }
 
@@ -1213,6 +1290,12 @@
   .q-seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 0 16px 14px; padding: 4px; border-radius: 14px; background: var(--bg); box-shadow: var(--nm-in-sm); }
   .q-seg button { padding: 9px 4px; border-radius: 11px; font-weight: 800; font-size: 13.5px; color: var(--ink-2); }
   .q-seg button[aria-checked="true"] { background: var(--panel); color: var(--ink); box-shadow: var(--nm-out); }
+  .q-seg + .q-srow { border-top: 1px solid var(--hair); }
+  .q-swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0 16px 14px; }
+  .q-swatches button { display: grid; justify-items: center; gap: 5px; padding: 8px 2px 7px; border-radius: 14px; font-weight: 800; font-size: 12.5px; color: var(--ink-2); }
+  .q-swatches span { width: 30px; height: 30px; border-radius: 50%; background: var(--sw); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .35); }
+  .q-swatches button[aria-checked="true"] { background: var(--bg); color: var(--ink); box-shadow: var(--nm-in-sm); }
+  .q-swatches button[aria-checked="true"] span { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--sw); }
   .q-danger { border: 1.5px solid color-mix(in srgb, var(--bad) 40%, transparent); }
   .q-sub { margin: 6px 16px 0; font-size: 11.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
   .q-row-t { cursor: pointer; }
@@ -1239,6 +1322,27 @@
   .q-toast { position: fixed; left: 50%; bottom: calc(var(--nav-h) + 20px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 20px); opacity: 0; pointer-events: none; z-index: 90; background: var(--ink); color: var(--bg); font-weight: 800; font-size: 13.5px; padding: 10px 16px; border-radius: 99px; transition: opacity .2s, transform .2s; max-width: calc(100% - 32px); }
   .q-toast[data-show="true"] { opacity: 1; transform: translate(-50%, 0); }
 </style>
+<script>
+  // Theme and colour go on <html> before first paint, so the app never flashes the wrong colours.
+  // window.applyTheme is also called from Settings (qb.js) when either choice changes.
+  (function () {
+    var r = document.documentElement;
+    window.applyTheme = function () {
+      var mode = null, accent = null;
+      try { mode = localStorage.getItem("nicole-revision-theme"); accent = localStorage.getItem("nicole-revision-accent"); } catch (e) {}
+      if (mode === "dark" || mode === "light") r.setAttribute("data-theme", mode); else r.removeAttribute("data-theme");
+      if (accent === "blue" || accent === "pink" || accent === "purple") r.setAttribute("data-accent", accent); else r.removeAttribute("data-accent");
+      // status bar colour follows the actual background, not just the phone's light/dark setting
+      var bg = getComputedStyle(r).getPropertyValue("--bg").trim();
+      if (bg) [].forEach.call(document.querySelectorAll('meta[name="theme-color"]'), function (m) { m.setAttribute("content", bg); });
+    };
+    window.applyTheme();
+    if (window.matchMedia) {
+      var mq = window.matchMedia("(prefers-color-scheme: dark)");
+      if (mq.addEventListener) mq.addEventListener("change", window.applyTheme); else if (mq.addListener) mq.addListener(window.applyTheme);
+    }
+  })();
+</script>
 </head>
 <body>
 
@@ -1372,11 +1476,10 @@
     pie: "PIE"
   };
   var KIND_ORDER = ["lecture", "sdl", "practical", "workshop", "cr", "case", "review", "pie"];
-  var HUE = { URO: "var(--sage)", ENI: "var(--clay)", GIL: "var(--ochre)" };
+  var HUE = { URO: "var(--uro)", ENI: "var(--clay)", GIL: "var(--ochre)" };
 
   var KEY = "nicole-revision-v1";
   var FLAG_KEY = "nicole-revision-flags-v1";
-  var THEME_KEY = "nicole-revision-theme";
   var OPEN_KEY = "nicole-revision-open";
 
   function load(k) {
@@ -1397,14 +1500,7 @@
   var state = { mod: "URO", q: "", kinds: {}, hideDone: false, flaggedOnly: false };
 
   // ---- theme ----
-  try {
-    var savedTheme = localStorage.getItem(THEME_KEY);
-    if (savedTheme === "dark" || savedTheme === "light") {
-      document.documentElement.setAttribute("data-theme", savedTheme);
-    }
-  } catch (e) {}
-
-  // the button with id="theme" now opens Settings (wired in qb.js); theme is chosen there
+  // applied in <head> (window.applyTheme); the button with id="theme" opens Settings, wired in qb.js
 
   // ---- index ----
   var ALL = [];
@@ -1816,6 +1912,11 @@
       if (e.data && e.data.type === "shell-updated") {
         document.getElementById("pill").setAttribute("data-show", "true");
       }
+    });
+    // a new service worker took over (new VERSION): this page is still running the old code
+    var hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      if (hadController) document.getElementById("pill").setAttribute("data-show", "true");
     });
   }
   document.getElementById("pill-go").addEventListener("click", function () {

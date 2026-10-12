@@ -18,6 +18,8 @@ Ticks and flags go into `localStorage` on her phone, under these keys:
     nicole-revision-flags-v1    flagged items
     nicole-revision-open        which weeks are expanded
     nicole-revision-theme       light/dark choice
+    nicole-revision-accent      colour theme (green when unset)
+    nicole-qbank-v2             question answers, marked sets, practice streak
 
 There is no server and no account. This is why it is instant — a tick is a
 local write, never a network call. The trade-off is that progress lives on
@@ -62,12 +64,14 @@ restore it at the new one.
 ## Updating it later
 
 Edit `index.html` (the `DATA` array near the top of the `<script>` holds every
-session) and re-upload. Her phone picks the change up on the launch after
-next: the service worker serves the cached copy instantly, fetches the new one
-in the background, and shows a "Reload" pill when it lands.
+session), `qb.js` or `questions.js` and re-upload. Her phone picks the change
+up on the launch after next: the service worker serves the cached copy
+instantly, fetches the new one in the background, and shows a "Reload" pill
+when it lands. Those three files are always re-checked; icons and the manifest
+are not.
 
-If you change `sw.js` itself, bump `VERSION` at the top of it, otherwise the
-old caches stick around.
+If you change `sw.js` itself, or the icons or manifest, bump `VERSION` at the
+top of `sw.js`, otherwise the old caches stick around.
 
 ## Fonts
 

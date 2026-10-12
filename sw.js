@@ -1,12 +1,13 @@
 /* Nicole's Revision Tracker - service worker
    Strategy:
-     shell (index.html)  -> stale-while-revalidate: instant launch, update lands next launch
+     app files (index.html, qb.js, questions.js)
+                         -> stale-while-revalidate: instant launch, update lands next launch
      icons + manifest    -> cache-first (they rarely change; bump VERSION to force)
      Google Fonts        -> cache-first (URLs are versioned, so a hit is always correct)
      anything else       -> network
 */
 
-var VERSION = "v3";
+var VERSION = "v4";
 var SHELL = "shell-" + VERSION;
 var FONTS = "fonts-" + VERSION;
 
@@ -25,7 +26,8 @@ var PRECACHE = [
 self.addEventListener("install", function (e) {
   e.waitUntil(
     caches.open(SHELL).then(function (c) {
-      return c.addAll(PRECACHE);
+      // cache: "reload" skips the browser's HTTP cache, so a new VERSION never precaches stale files
+      return c.addAll(PRECACHE.map(function (u) { return new Request(u, { cache: "reload" }); }));
     }).then(function () {
       return self.skipWaiting();
     })
@@ -43,6 +45,8 @@ self.addEventListener("activate", function (e) {
     })
   );
 });
+
+var APP_FILES = ["index.html", "qb.js", "questions.js"];
 
 function isFont(url) {
   return url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com";
@@ -80,13 +84,16 @@ self.addEventListener("fetch", function (e) {
 
   if (url.origin !== self.location.origin) return;
 
-  // --- the app shell: serve cached instantly, refresh in the background ---
-  var isShell = req.mode === "navigate" || url.pathname.endsWith("/index.html");
-  if (isShell) {
+  // --- the app files: serve cached instantly, refresh in the background ---
+  // All three change together when the app is updated, so all three are revalidated;
+  // a cache-first qb.js would keep running old code after index.html moved on.
+  var file = req.mode === "navigate" ? "index.html" : url.pathname.split("/").pop();
+  if (APP_FILES.indexOf(file) >= 0) {
+    var path = "./" + file;
     e.respondWith(
       caches.open(SHELL).then(function (c) {
-        return c.match("./index.html").then(function (hit) {
-          var net = fetch("./index.html", { cache: "no-cache" }).then(function (res) {
+        return c.match(path).then(function (hit) {
+          var net = fetch(path, { cache: "no-cache" }).then(function (res) {
             if (!res || !res.ok) return hit || res;
             var fresh = res.clone();
             if (hit) {
@@ -94,7 +101,7 @@ self.addEventListener("fetch", function (e) {
                 if (t[0] !== t[1]) tellClients({ type: "shell-updated" });
               }).catch(function () {});
             }
-            c.put("./index.html", fresh);
+            c.put(path, fresh);
             return res;
           }).catch(function () {
             return hit;

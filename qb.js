@@ -74,6 +74,19 @@
   function estMin(b) { return Math.round(b.questions.reduce(function (x, q) { return x + (q.type === "sa" ? 5 : !q.type ? 6 : q.type === "emq" ? 2.5 : 1.2); }, 0)); }
   function logActivity() { var t = today(); S.days[t] = (S.days[t] || 0) + 1; save(); }
 
+  // An earlier build saved every answer under the key "[object Object]" instead of the question id,
+  // so sets marked with it scored as if nothing was answered. Drop that key and reopen those sets.
+  var JUNK = "[object Object]";
+  function repairLostAnswers() {
+    if (!(JUNK in S.a)) return 0;
+    delete S.a[JUNK];
+    var n = 0;
+    Object.keys(S.marked).forEach(function (k) { var b = BLOCKS[k]; if (!b || b.questions.some(answered)) return;
+      delete S.marked[k]; S.pos[k] = 0; b.questions.forEach(function (q) { delete S.a[q.id]; }); n++; });
+    save(); return n;
+  }
+  var repaired = repairLostAnswers();
+
   // ---------- common bits ----------
   var CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg>';
   function dayFor(iso) { for (var i = 0; i < DATA.days.length; i++) if (DATA.days[i].date === iso) return DATA.days[i];
@@ -140,11 +153,59 @@
       shown.map(function (id) { return sessRow(id, true); }).join("") + "</div>" +
       (ids.length > 5 ? '<button class="q-more" data-od>' + (open ? "Show fewer" : "Show all " + ids.length) + "</button>" : "") + "</section>";
   }
+  // ---------- day overview: what this day asks for, how much is done, what to do next ----------
+  var EXAM_START = (DATA.days.filter(function (d) { return d.kind === "exam"; })[0] || {}).date;
+  function daysBetween(a, b) { return Math.round((new Date(b + "T12:00:00") - new Date(a + "T12:00:00")) / 864e5); }
+  function todoRow(state, title, sub, attr) {
+    var icon = state === "done" ? CHECK : state === "bad" ? "!" : "";
+    return '<button class="q-todo is-' + state + '" ' + attr + '><span class="q-tick" aria-hidden="true">' + icon + '</span><span class="q-tdt"><b>' + title + "</b><small>" + sub + "</small></span>" +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>';
+  }
+  function dayOverviewHtml(d, iso) {
+    var t = today(), isToday = iso === t;
+    var ids = Object.keys(SESS).filter(function (id) { return SESS[id].due === iso; });
+    var ticked = ids.filter(function (id) { return done[id]; }).length;
+    var order = d.blocks.filter(function (b) { return b.kind === "set" && b.label === "First pass"; });
+    order = order.concat(d.blocks.filter(function (b) { return order.indexOf(b) < 0; }));
+    var infos = order.map(blockInfo), marked = 0, mins = 0, pending = 0, next = null, selfNext = null;
+    order.forEach(function (b, k) { var i = infos[k];
+      if (i.marked) { marked++; pending += i.pending; if (i.pending && !selfNext) selfNext = b; }
+      else { mins += estMin(b); if (!next) next = b; } });
+    var od = isToday ? Object.keys(SESS).filter(function (id) { return SESS[id].due < t && !done[id]; }).length : 0;
+    var total = ids.length + order.length;
+    if (!total && !od) return "";
+    var finished = ticked + marked, pct = total ? Math.round(100 * finished / total) : 100;
+    var unit = function (n, one, many) { return n + " " + (n === 1 ? one : many); };
+
+    var rows = "";
+    if (ids.length) rows += todoRow(ticked === ids.length ? "done" : "todo", "Revise " + unit(ids.length, "session", "sessions"), ticked + " of " + ids.length + " ticked", 'data-goto=".q-topic"');
+    if (order.length) rows += todoRow(marked === order.length ? "done" : "todo", "Answer and mark " + unit(order.length, "question set", "question sets"),
+      marked + " of " + order.length + " marked" + (mins ? " · about " + mins + " min left" : ""), next ? 'data-open="' + next.key + '"' : 'data-goto=".q-setbtn"');
+    if (pending) rows += todoRow("todo", "Mark " + unit(pending, "short answer", "short answers") + " yourself", "Against the mark scheme, in the set's results", 'data-open="' + selfNext.key + '"');
+    if (od) rows += todoRow("bad", "Catch up " + unit(od, "overdue session", "overdue sessions"), "From earlier days, not yet ticked", 'data-goto=".q-overdue"');
+
+    var cta;
+    if (next) { var ni = blockInfo(next);
+      cta = '<button class="q-btn pri q-next" data-open="' + next.key + '">' + (ni.ans ? "Continue" : "Next up") + ": " + esc(next.title) + (ni.ans ? " · " + ni.ans + "/" + ni.n : "") + "</button>"; }
+    else if (selfNext) cta = '<button class="q-btn pri q-next" data-open="' + selfNext.key + '">Mark your short answers: ' + esc(selfNext.title) + "</button>";
+    else if (finished === total && total) {
+      var nx = nextSetDay(iso);
+      cta = '<p class="q-alldone">' + (od ? "Today's sessions and sets are done. Next: catch up the overdue sessions."
+        : (isToday ? "All done for today." : "Everything for this day is done.") + (nx ? " Next: " + fmt(nx.date).long + " · " + esc(dayLabel(nx)) + "." : "")) + "</p>";
+    } else cta = "";
+
+    var exam = EXAM_START && EXAM_START >= iso ? daysBetween(iso, EXAM_START) : null;
+    var countdown = exam == null ? "" : exam === 0 ? "Exam week starts today" : unit(exam, "day", "days") + " to exam week";
+    return '<section class="q-day"><div class="q-dayhd"><h2>' + (isToday ? "Your day" : "This day's plan") + '</h2><span class="q-daypct">' + (total ? finished + " of " + total + " done" : "") + "</span></div>" +
+      (total ? '<div class="q-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '" aria-label="Day progress"><i style="width:' + pct + '%"></i></div>' : "") +
+      '<div class="q-todos">' + rows + "</div>" + cta + (countdown ? '<p class="q-count2">' + countdown + "</p>" : "") + "</section>";
+  }
+
   function renderToday(date) {
     curDate = date || curDate || today();
     var d = dayFor(curDate), f = fmt(curDate), t = today();
     var h = '<header class="q-head"><div><p class="q-eyebrow">' + (curDate === t ? "Today" : curDate < t ? "Earlier" : "Coming up") + '</p><h1>' + f.long + '</h1></div><button class="q-icon" data-settings aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg></button></header>';
-    h += heroHtml() + weekHtml(curDate);
+    h += dayOverviewHtml(d, curDate) + heroHtml() + weekHtml(curDate);
     if (curDate === t) h += overdueHtml();
     h += '<div class="q-dayhead mod-' + dayMod(d) + '"><span class="q-chip">' + esc(dayLabel(d)) + "</span>" + (curDate !== t ? '<button class="q-btn sm" data-today>Back to today</button>' : "") + "</div>";
     var sets = d.blocks.filter(function (b) { return b.kind === "set" && b.label === "First pass"; });
@@ -221,12 +282,18 @@
   }
 
   // ---------- SETTINGS ----------
-  var THEME = "nicole-revision-theme";
+  var THEME = "nicole-revision-theme", ACCENT = "nicole-revision-accent";
+  // swatch colours are fixed so each one shows its own colour whatever theme is active
+  var ACCENTS = [["green","Green","#6F9163"],["blue","Blue","#5A88B0"],["pink","Pink","#C0708A"],["purple","Purple","#8A78BA"]];
   function themeMode() { try { var t = localStorage.getItem(THEME); return t === "dark" || t === "light" ? t : "system"; } catch (e) { return "system"; } }
+  function accentName() { try { var a = localStorage.getItem(ACCENT); return ACCENTS.some(function (x) { return x[0] === a; }) ? a : "green"; } catch (e) { return "green"; } }
   function setTheme(mode) {
-    var r = document.documentElement;
     try { if (mode === "system") localStorage.removeItem(THEME); else localStorage.setItem(THEME, mode); } catch (e) {}
-    if (mode === "system") r.removeAttribute("data-theme"); else r.setAttribute("data-theme", mode);
+    window.applyTheme();
+  }
+  function setAccent(name) {
+    try { if (name === "green") localStorage.removeItem(ACCENT); else localStorage.setItem(ACCENT, name); } catch (e) {}
+    window.applyTheme();
   }
   var RS = null; // reset selection {ticks, answers, streak, flags, mods:{URO,ENI,GIL}}
   function resetCounts(sel) {
@@ -256,17 +323,19 @@
     if (sel.streak) out.push("your practice streak (" + c.days + " " + (c.days === 1 ? "day" : "days") + " of history)");
     return {lines:out, total:c.ticks + c.sets + c.answers + c.flags + c.days};
   }
-  function toast(msg) { var t = $("q-toast"); if (!t) { t = document.createElement("div"); t.id = "q-toast"; t.className = "q-toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
-    t.textContent = msg; t.dataset.show = "true"; clearTimeout(t._h); t._h = setTimeout(function () { t.dataset.show = "false"; }, 3500); }
+  function toast(msg, ms) { var t = $("q-toast"); if (!t) { t = document.createElement("div"); t.id = "q-toast"; t.className = "q-toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
+    t.textContent = msg; t.dataset.show = "true"; clearTimeout(t._h); t._h = setTimeout(function () { t.dataset.show = "false"; }, ms || 3500); }
 
   function openSettings(section) {
-    var ov = ovShell("ALL"), mode = themeMode();
+    var ov = ovShell("ALL"), mode = themeMode(), accent = accentName();
     RS = RS || {ticks:false, answers:false, flags:false, streak:false, mods:{URO:true, ENI:true, GIL:true}};
     function tog(key, label, hint) { return '<label class="q-row-t"><span><b>' + label + "</b><small>" + hint + '</small></span><input type="checkbox" class="q-switch" data-rs="' + key + '"' + (RS[key] ? " checked" : "") + "></label>"; }
     ov.innerHTML = '<div class="q-ovtop"><div class="in"><button class="q-icon" data-x aria-label="Close settings"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button><div class="q-count" style="flex:1">Settings</div></div></div>' +
       '<div class="q-ovbody" id="q-sbody"><div class="in q-settings">' +
       '<p class="q-slabel">Appearance</p><div class="q-sgroup"><div class="q-srow"><span><b>Theme</b><small>Light, dark, or match your phone</small></span></div>' +
-      '<div class="q-seg" role="radiogroup" aria-label="Theme">' + [["light","Light"],["dark","Dark"],["system","Match phone"]].map(function (o) { return '<button role="radio" aria-checked="' + (mode === o[0]) + '" data-mode="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div></div>" +
+      '<div class="q-seg" role="radiogroup" aria-label="Theme">' + [["light","Light"],["dark","Dark"],["system","Match phone"]].map(function (o) { return '<button role="radio" aria-checked="' + (mode === o[0]) + '" data-mode="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>" +
+      '<div class="q-srow"><span><b>Colour</b><small>' + ACCENTS.filter(function (o) { return o[0] === accent; })[0][1] + '</small></span></div>' +
+      '<div class="q-swatches" role="radiogroup" aria-label="Colour">' + ACCENTS.map(function (o) { return '<button role="radio" aria-checked="' + (accent === o[0]) + '" aria-label="' + o[1] + '" data-accent="' + o[0] + '" style="--sw:' + o[2] + '"><span></span>' + o[1] + "</button>"; }).join("") + "</div></div>" +
       '<p class="q-slabel">Help</p><div class="q-sgroup"><details class="q-howto"' + (section === "help" ? " open" : "") + '><summary><span><b>How it works</b><small>Ticking, colours, questions and marking</small></span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></summary>' + howItWorksHtml() + "</details></div>" +
       '<p class="q-slabel">Your data</p><div class="q-sgroup"><button class="q-srow q-link" data-bk="export"><span><b>Save a backup</b><small>Ticks, flags and question answers in one file</small></span><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></button>' +
       '<button class="q-srow q-link" data-bk="import"><span><b>Restore from a backup</b><small>Adds anything missing; never removes progress</small></span><svg viewBox="0 0 24 24"><path d="M12 21V9M7 14l5-5 5 5M5 3h14"/></svg></button></div>' +
@@ -276,6 +345,9 @@
       '<button class="q-btn q-dangerbtn" data-reset-go>Reset selected…</button></div>' +
       '<p class="q-foot2">Nicole\'s revision · Everything saves on this phone only.</p></div></div>';
     ov.querySelector("[data-x]").onclick = closeOv;
+    [].forEach.call(ov.querySelectorAll("[data-accent]"), function (b) { b.onclick = function () { setAccent(b.dataset.accent);
+      [].forEach.call(ov.querySelectorAll("[data-accent]"), function (x) { x.setAttribute("aria-checked", x === b); });
+      b.parentNode.previousElementSibling.querySelector("small").textContent = b.getAttribute("aria-label"); }; });
     [].forEach.call(ov.querySelectorAll("[data-mode]"), function (b) { b.onclick = function () { setTheme(b.dataset.mode); [].forEach.call(ov.querySelectorAll("[data-mode]"), function (x) { x.setAttribute("aria-checked", x === b); }); }; });
     [].forEach.call(ov.querySelectorAll("[data-rs]"), function (x) { x.onchange = function () { RS[x.dataset.rs] = x.checked; updGo(); }; });
     [].forEach.call(ov.querySelectorAll("[data-rm]"), function (x) { x.onchange = function () { RS.mods[x.dataset.rm] = x.checked; updGo(); }; });
@@ -350,12 +422,12 @@
     var nx = ov.querySelector("[data-next]"), fn = ov.querySelector("[data-finish]");
     if (nx) nx.onclick = function () { P.i++; renderPlayer(); };
     if (fn) fn.onclick = confirmFinish;
-    [].forEach.call(ov.querySelectorAll("[data-sba]"), function (x) { x.onclick = function () { var a = A(q), v = +x.dataset.sba; a.sel = a.sel === v ? null : v; logActivity();
+    [].forEach.call(ov.querySelectorAll("[data-sba]"), function (x) { x.onclick = function () { var a = A(q.id), v = +x.dataset.sba; a.sel = a.sel === v ? null : v; logActivity();
       [].forEach.call(ov.querySelectorAll("[data-sba]"), function (y) { var on = a.sel === +y.dataset.sba; y.classList.toggle("sel", on); y.setAttribute("aria-checked", on); }); updFinish(); }; });
-    [].forEach.call(ov.querySelectorAll("[data-emq]"), function (x) { x.onchange = function () { var a = A(q); a.sel = a.sel || {}; if (x.value === "") delete a.sel[x.dataset.emq]; else a.sel[x.dataset.emq] = +x.value; logActivity(); updFinish(); }; });
+    [].forEach.call(ov.querySelectorAll("[data-emq]"), function (x) { x.onchange = function () { var a = A(q.id); a.sel = a.sel || {}; if (x.value === "") delete a.sel[x.dataset.emq]; else a.sel[x.dataset.emq] = +x.value; logActivity(); updFinish(); }; });
     var fi = ov.querySelector("[data-fill]");
-    if (fi) { fi.oninput = function () { A(q).text = fi.value; save(); updFinish(); }; fi.onchange = logActivity; fi.onkeydown = function (e) { if (e.key === "Enter") { e.preventDefault(); (nx || fn).click(); } }; }
-    [].forEach.call(ov.querySelectorAll("[data-sa]"), function (x) { x.oninput = function () { var a = A(q); a.text = a.text || {}; a.text[x.dataset.sa] = x.value; save(); updFinish(); }; x.onchange = logActivity; });
+    if (fi) { fi.oninput = function () { A(q.id).text = fi.value; save(); updFinish(); }; fi.onchange = logActivity; fi.onkeydown = function (e) { if (e.key === "Enter") { e.preventDefault(); (nx || fn).click(); } }; }
+    [].forEach.call(ov.querySelectorAll("[data-sa]"), function (x) { x.oninput = function () { var a = A(q.id); a.text = a.text || {}; a.text[x.dataset.sa] = x.value; save(); updFinish(); }; x.onchange = logActivity; });
   }
   function updFinish() { var b = BLOCKS[P.key], f = $("q-ov").querySelector("[data-finish]"); if (f) f.textContent = "Finish and mark · " + b.questions.filter(answered).length + "/" + b.questions.length; }
   function sheet(html, mod) { var sh = $("q-sheet"); sh.className = "q-sheet qb mod-" + mod; sh.innerHTML = '<div class="q-sbox" role="dialog">' + html + "</div>"; sh.hidden = false; sh.onclick = function (e) { if (e.target === sh) sh.hidden = true; }; return sh; }
@@ -430,7 +502,7 @@
       b.questions.forEach(function (q) { delete S.a[q.id]; }); delete S.marked[b.key]; S.pos[b.key] = 0; save(); R = null; P = {key:b.key, i:0}; renderPlayer(); };
     [].forEach.call(ov.querySelectorAll("[data-score]"), function (x) { x.onclick = function () { A(x.dataset.score).score = +x.dataset.v; save(); keep(); }; });
     [].forEach.call(ov.querySelectorAll("[data-override]"), function (x) { x.onclick = function () { A(x.dataset.override).override = true; save(); keep(); }; });
-    [].forEach.call(ov.querySelectorAll("[data-stick]"), function (x) { x.onchange = function () { var a = A(x.dataset.stick); a.ticks = a.ticks || {}; a.ticks[x.dataset.i] = x.checked; a.score = Object.keys(a.ticks).filter(function (k) { return a.ticks[k]; }).length; save(); }; });
+    [].forEach.call(ov.querySelectorAll("[data-stick]"), function (x) { x.onchange = function () { var a = A(x.dataset.stick); a.ticks = a.ticks || {}; a.ticks[x.dataset.i] = x.checked; a.score = Object.keys(a.ticks).filter(function (k) { return a.ticks[k]; }).length; save(); keep(); }; });
     [].forEach.call(ov.querySelectorAll("[data-tick]"), function (x) { x.onchange = function () { tick(x.dataset.tick, x.checked); keep(); }; });
   }
 
@@ -463,10 +535,11 @@
     if ((x = e.target.closest("[data-today]"))) { renderToday(today()); return; }
     if ((x = e.target.closest("[data-wk]"))) { var tg = addDays(curDate, +x.dataset.wk), mon = addDays(tg, -((new Date(tg + "T12:00:00").getDay() + 6) % 7)), pick = null;
       for (var k = 0; k < 7 && !pick; k++) { var iso = addDays(mon, k), d = null; for (var i = 0; i < DATA.days.length; i++) if (DATA.days[i].date === iso) d = DATA.days[i]; if (d && d.blocks.length) pick = iso; }
-      for (var k2 = 0; k2 < 7 && !pick; k2++) { var iso2 = addDays(mon, k2); if (dayFor(iso2).blocks || iso2 === today()) pick = iso2; }
+      for (var k2 = 0; k2 < 7 && !pick; k2++) { var iso2 = addDays(mon, k2); if (DATA.days.some(function (x) { return x.date === iso2; }) || iso2 === today()) pick = iso2; }
       renderToday(pick || tg); return; }
     if ((x = e.target.closest("[data-od]"))) { S.odOpen = !S.odOpen; save(); renderToday(); return; }
     if ((x = e.target.closest("[data-settings]"))) { openSettings(); return; }
+    if ((x = e.target.closest("[data-goto]"))) { var el = $("tab-today-in").querySelector(x.dataset.goto); if (el) el.scrollIntoView({behavior: "smooth", block: "start"}); return; }
   });
   document.addEventListener("change", function (e) {
     var x = e.target; if (!x.matches || !x.matches("[data-tick]") || x.closest("#q-ov")) return;
@@ -495,10 +568,11 @@
   window.qbSnapshot = function () { return S; };
   window.qbRestore = function (q) { if (!q || typeof q !== "object") return 0; var n = 0;
     ["a","marked","days"].forEach(function (k) { var src = q[k] || {}; S[k] = S[k] || {}; Object.keys(src).forEach(function (id) { if (!(id in S[k])) { S[k][id] = src[id]; n++; } }); });
-    save(); planDirty = true; refresh(); return n; };
+    repairLostAnswers(); save(); planDirty = true; refresh(); return n; };
 
   $("theme").addEventListener("click", function () { openSettings(); });
   var start = "today"; try { start = sessionStorage.getItem("nicole-tab") || "today"; } catch (e) {}
   render(); // recolour Plan now that session states exist
   showTab(TABS.indexOf(start) >= 0 ? start : "today");
+  if (repaired) setTimeout(function () { toast("A bug stopped answers saving. " + repaired + " question " + (repaired === 1 ? "set has" : "sets have") + " been reopened so you can redo " + (repaired === 1 ? "it" : "them") + ".", 9000); }, 600);
 })();
