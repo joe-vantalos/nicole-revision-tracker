@@ -293,7 +293,8 @@
       h += '<p class="q-sum">' + (first.length ? "Also on this day:" : d.kind === "consolidation" ? "Consolidation day: fresh questions on topics you've already covered." : d.kind === "exam" ? "Rapid recall before the exam." : "Practice papers. Answer the whole paper, then mark it.") + "</p>";
       h += '<div class="q-cards">' + others.map(function (u) {
         var b = u.blocks.length ? BLOCKS[u.blocks[0]] : null;
-        return '<div class="q-topic mod-' + u.module + '"><div class="q-gh"><h3>' + esc(u.title) + "</h3>" + moveBtn(u) + "</div>" + movedNote(u) + (b ? setButton(b) : "") + "</div>";
+        return '<div class="q-topic mod-' + u.module + '"><div class="q-gh q-gh-t">' + modTag(u) + moveBtn(u) +
+          "<h3>" + esc(u.title) + "</h3></div>" + movedNote(u) + (b ? setButton(b) : "") + "</div>";
       }).join("") + "</div>";
     }
     $("tab-today-in").innerHTML = h;
@@ -312,12 +313,14 @@
     if (!u.moved) return "";
     return '<p class="q-movedfrom">Moved here from ' + SCH.fmtShort(u.home) + ' · <button class="q-link2" data-putback="' + u.id + '" data-mday="' + u.from + '">put it back</button></p>';
   }
+  function modTag(u) { return u.module ? '<span class="q-mtag">' + esc(u.module) + "</span>" : ""; }
   function unitSection(u) {
     var ids = u.sess, dn = ids.filter(function (id) { return done[id]; }).length;
     var b = u.blocks.length ? BLOCKS[u.blocks[0]] : null;
     var away = (SET_SESS[u.sid] || []).filter(function (id) { return SESS[id].due !== u.from; });
-    var h = '<section class="q-topic mod-' + u.module + '"><div class="q-gh"><h3>' + esc(u.title) + "</h3>" +
-      (ids.length ? '<span class="q-n">' + dn + "/" + ids.length + "</span>" : "") + moveBtn(u) + "</div>" + movedNote(u);
+    var h = '<section class="q-topic mod-' + u.module + '"><div class="q-gh q-gh-t">' + modTag(u) +
+      (ids.length ? '<span class="q-n">' + dn + "/" + ids.length + "</span>" : "") + moveBtn(u) +
+      "<h3>" + esc(u.title) + "</h3></div>" + movedNote(u);
     if (ids.length) h += '<div class="q-list">' + ids.map(function (id) { return sessRow(id, false); }).join("") + "</div>";
     if (away.length) {
       var ds = {};
