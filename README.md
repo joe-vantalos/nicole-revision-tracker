@@ -76,6 +76,8 @@ how often the right answer is the longest option (chance is 20%) and what a stud
 never reads the question would score, and exits with an error if either is too high.
 `--list` names each question that breaks a rule.
 
+`tools/mcq-review.md` lists the few rewritten questions a reviewer was not fully sure of.
+
 ## Updating it later
 
 Edit `index.html` (the `DATA` array near the top of the `<script>` holds every
