@@ -291,6 +291,7 @@
       "<li><b>Today</b> lists the sessions due today with that topic's questions underneath. Tick each session when you've revised it.</li>" +
       "<li>A session turns <span class=\"warn\">amber</span> when you've marked its questions but haven't ticked it, and <span class=\"bad\">red</span> once its day has passed unticked. Red ones collect under Overdue at the top of Today.</li>" +
       "<li>Questions come one at a time. Nothing is marked until you press <b>Finish and mark</b> at the end of the set.</li>" +
+      "<li><b>Think first</b> (Settings → Practice) hides the options on single best answer questions until you tap Show options. Answering from memory first is a better test, and the options can't hint at the answer.</li>" +
       "<li>Single best answer, extended matching and fill in the blank mark themselves. For short answers and OSPE stations you mark yourself against the mark scheme.</li>" +
       "<li>Fill in the blank forgives small typos, British or American spelling and plurals, and shows the correct spelling. It won't accept a different real term (hypo for hyper, ilium for ileum), and numbers must be exact. You can overrule it either way.</li>" +
       "<li>Your streak counts days you did something. Rest days pause it: they don't add a day and don't break it.</li>" +
@@ -312,6 +313,10 @@
     try { if (name === "green") localStorage.removeItem(ACCENT); else localStorage.setItem(ACCENT, name); } catch (e) {}
     window.applyTheme();
   }
+  // Think first: hide single-best-answer options until she has an answer in mind (off when unset)
+  var THINK = "nicole-revision-think";
+  function thinkFirst() { try { return localStorage.getItem(THINK) === "1"; } catch (e) { return false; } }
+  function setThinkFirst(on) { try { if (on) localStorage.setItem(THINK, "1"); else localStorage.removeItem(THINK); } catch (e) {} }
   var RS = null; // reset selection {ticks, answers, streak, flags, mods:{URO,ENI,GIL}}
   function resetCounts(sel) {
     var mods = sel.mods, c = {ticks:0, flags:0, sets:0, answers:0, days:0};
@@ -353,6 +358,7 @@
       '<div class="q-seg" role="radiogroup" aria-label="Theme">' + [["light","Light"],["dark","Dark"],["system","Match phone"]].map(function (o) { return '<button role="radio" aria-checked="' + (mode === o[0]) + '" data-mode="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>" +
       '<div class="q-srow"><span><b>Colour</b><small>' + ACCENTS.filter(function (o) { return o[0] === accent; })[0][1] + '</small></span></div>' +
       '<div class="q-swatches" role="radiogroup" aria-label="Colour">' + ACCENTS.map(function (o) { return '<button role="radio" aria-checked="' + (accent === o[0]) + '" aria-label="' + o[1] + '" data-accent="' + o[0] + '" style="--sw:' + o[2] + '"><span></span>' + o[1] + "</button>"; }).join("") + "</div></div>" +
+      '<p class="q-slabel">Practice</p><div class="q-sgroup"><label class="q-row-t"><span><b>Think first</b><small>Hide the options on single best answer questions until you tap Show options, so you answer from memory</small></span><input type="checkbox" class="q-switch on-accent" data-think' + (thinkFirst() ? " checked" : "") + "></label></div>" +
       '<p class="q-slabel">Help</p><div class="q-sgroup"><details class="q-howto"' + (section === "help" ? " open" : "") + '><summary><span><b>How it works</b><small>Ticking, colours, questions and marking</small></span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></summary>' + howItWorksHtml() + "</details></div>" +
       '<p class="q-slabel">Your data</p><div class="q-sgroup"><button class="q-srow q-link" data-bk="export"><span><b>Save a backup</b><small>Ticks, flags and question answers in one file</small></span><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></button>' +
       '<button class="q-srow q-link" data-bk="import"><span><b>Restore from a backup</b><small>Adds anything missing; never removes progress</small></span><svg viewBox="0 0 24 24"><path d="M12 21V9M7 14l5-5 5 5M5 3h14"/></svg></button></div>' +
@@ -365,6 +371,7 @@
     [].forEach.call(ov.querySelectorAll("[data-accent]"), function (b) { b.onclick = function () { setAccent(b.dataset.accent);
       [].forEach.call(ov.querySelectorAll("[data-accent]"), function (x) { x.setAttribute("aria-checked", x === b); });
       b.parentNode.previousElementSibling.querySelector("small").textContent = b.getAttribute("aria-label"); }; });
+    ov.querySelector("[data-think]").onchange = function () { setThinkFirst(this.checked); };
     [].forEach.call(ov.querySelectorAll("[data-mode]"), function (b) { b.onclick = function () { setTheme(b.dataset.mode); [].forEach.call(ov.querySelectorAll("[data-mode]"), function (x) { x.setAttribute("aria-checked", x === b); }); }; });
     [].forEach.call(ov.querySelectorAll("[data-rs]"), function (x) { x.onchange = function () { RS[x.dataset.rs] = x.checked; updGo(); }; });
     [].forEach.call(ov.querySelectorAll("[data-rm]"), function (x) { x.onchange = function () { RS.mods[x.dataset.rm] = x.checked; updGo(); }; });
@@ -408,7 +415,9 @@
   function closeOv() { $("q-ov").hidden = true; $("q-ov").innerHTML = ""; document.body.style.overflow = ""; P = null; R = null; refresh(); }
   function qInput(q) {
     var a = S.a[q.id] || {}, h = "";
-    if (q.type === "sba") {
+    if (q.type === "sba" && thinkFirst() && a.sel == null && !(P.shown && P.shown[q.id])) {
+      h += '<p class="q-stem">' + esc(q.stem) + '</p><div class="q-think"><b>Think of your answer first</b><small>Have an answer in your head? Then look at the options.</small><button class="q-btn sm" data-reveal>Show options</button></div>';
+    } else if (q.type === "sba") {
       h += '<p class="q-stem">' + esc(q.stem) + '</p><div class="q-opts" role="radiogroup">' + q.options.map(function (o, i) { return '<button class="q-opt' + (a.sel === i ? " sel" : "") + '" role="radio" aria-checked="' + (a.sel === i) + '" data-sba="' + i + '"><span class="L">' + L(i) + "</span><span>" + esc(o) + "</span><span></span></button>"; }).join("") + "</div>";
     } else if (q.type === "emq") {
       h += '<p class="q-stem">' + esc(q.stem) + '</p><ul class="q-emq">' + q.options.map(function (o) { return "<li>" + esc(o) + "</li>"; }).join("") + "</ul>";
@@ -439,6 +448,8 @@
     var nx = ov.querySelector("[data-next]"), fn = ov.querySelector("[data-finish]");
     if (nx) nx.onclick = function () { P.i++; renderPlayer(); };
     if (fn) fn.onclick = confirmFinish;
+    var sh = ov.querySelector("[data-reveal]");
+    if (sh) sh.onclick = function () { (P.shown = P.shown || {})[q.id] = 1; renderPlayer(); };
     [].forEach.call(ov.querySelectorAll("[data-sba]"), function (x) { x.onclick = function () { var a = A(q.id), v = +x.dataset.sba; a.sel = a.sel === v ? null : v; if (a.sel != null) logActivity(); else save();
       [].forEach.call(ov.querySelectorAll("[data-sba]"), function (y) { var on = a.sel === +y.dataset.sba; y.classList.toggle("sel", on); y.setAttribute("aria-checked", on); }); updFinish(); }; });
     [].forEach.call(ov.querySelectorAll("[data-emq]"), function (x) { x.onchange = function () { var a = A(q.id); a.sel = a.sel || {}; if (x.value === "") { delete a.sel[x.dataset.emq]; save(); } else { a.sel[x.dataset.emq] = +x.value; logActivity(); } updFinish(); }; });
