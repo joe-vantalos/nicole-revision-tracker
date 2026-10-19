@@ -21,14 +21,21 @@
   // Always the device's local date, re-read on every use so it rolls over at midnight.
   function today() { return isoOf(new Date()); }
 
-  var BLOCKS = {}, DAYOF = {};
-  DATA.days.forEach(function (d) { d.blocks.forEach(function (b) { BLOCKS[b.key] = b; DAYOF[b.key] = d.date; }); });
+  // schedule.js has already applied her moves to DATA, so everything below reads the
+  // real plan. resched() rebuilds the few maps whose order depends on dates.
+  var SCH = window.QBSched;
+  var BLOCKS = {};
+  DATA.days.forEach(function (d) { d.blocks.forEach(function (b) { BLOCKS[b.key] = b; }); });
   var FIRST = DATA.days[0].date, LAST = DATA.days[DATA.days.length-1].date;
   var ITEM = {}; ALL.forEach(function (it) { ITEM[it.id] = it; });
   var SESS = DATA.sess; // tracker id -> {due, set}
-  var SET_SESS = {};    // set id -> [tracker ids in timetable order]
-  Object.keys(SESS).sort(function (a, b) { return SESS[a].due < SESS[b].due ? -1 : SESS[a].due > SESS[b].due ? 1 : 0; })
-    .forEach(function (id) { (SET_SESS[SESS[id].set] = SET_SESS[SESS[id].set] || []).push(id); });
+  var SET_SESS = {};    // set id -> [tracker ids in plan order]
+  function resched() {
+    SET_SESS = {};
+    Object.keys(SESS).sort(function (a, b) { return SESS[a].due < SESS[b].due ? -1 : SESS[a].due > SESS[b].due ? 1 : (a < b ? -1 : 1); })
+      .forEach(function (id) { (SET_SESS[SESS[id].set] = SET_SESS[SESS[id].set] || []).push(id); });
+    planDirty = true;
+  }
 
   // ---------- session state (shared with the Plan tab) ----------
   function setMarked(sid) { return Object.keys(S.marked).some(function (k) { return k.indexOf(sid + "-R") === 0; }); }
@@ -74,7 +81,7 @@
     var pts = 0, max = 0, pending = 0;
     if (marked) b.questions.forEach(function (q) { var g = grade(q); if (g.state === "self") { pending++; return; } pts += g.pts; max += g.max; });
     return {n:n,ans:ans,marked:marked,pts:pts,max:max,pending:pending,pct:max?Math.round(100*pts/max):null}; }
-  function estMin(b) { return Math.round(b.questions.reduce(function (x, q) { return x + (q.type === "sa" ? 5 : !q.type ? 6 : q.type === "emq" ? 2.5 : 1.2); }, 0)); }
+  function estMin(b) { return SCH.blockMin(b); }
   function logActivity() { var t = today(); S.days[t] = (S.days[t] || 0) + 1; save(); }
 
   // An earlier build saved every answer under the key "[object Object]" instead of the question id,
@@ -94,13 +101,41 @@
   var CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg>';
   function dayFor(iso) { for (var i = 0; i < DATA.days.length; i++) if (DATA.days[i].date === iso) return DATA.days[i];
     return {date:iso,kind:iso<FIRST?"before":"after",module:null,blocks:[]}; }
-  function nextSetDay(iso) { for (var i = 0; i < DATA.days.length; i++) if (DATA.days[i].date > iso && DATA.days[i].blocks.length) return DATA.days[i]; return null; }
+  function nextSetDay(iso) { for (var i = 0; i < DATA.days.length; i++) { var x = DATA.days[i].date;
+    if (x > iso && SCH.hasWork(x) && !SCH.offByUser(x)) return DATA.days[i]; } return null; }
+  // What this day is for. Her own changes come first: a day she marked off says so, and a
+  // day whose work has been moved about is described by what is actually on it now.
   function dayLabel(d) {
-    if (!d.blocks.length) return d.kind === "off" ? "Rest day" : d.kind === "before" ? "Before revision" : d.kind === "after" ? "After exams" : "Exam day";
+    var work = d.blocks.length || SCH.sessOn(d.date).length;
+    if (SCH.offByUser(d.date)) return work ? "Day off · work still on it" : "Day off";
+    if (!work) return d.kind === "off" ? "Rest day" : d.kind === "before" ? "Before revision" : d.kind === "after" ? "After exams"
+      : d.kind === "exam" ? "Exam day" : d.movedOut ? "Cleared · nothing left on it" : "Nothing scheduled";
+    var mods = d.mods || [], one = mods.length === 1 ? mods[0] + " " : "";
+    if (d.kind === "off") return "Rest day · " + one + "work moved in";
+    var pre = one || "Mixed ";
+    if (d.movedIn || d.movedOut) {
+      var labs = {};
+      d.blocks.forEach(function (b) { labs[b.label] = 1; });
+      if (SCH.sessOn(d.date).length) labs["First pass"] = 1;
+      var ks = Object.keys(labs);
+      return pre + (ks.length === 1 ? ks[0].toLowerCase() : "revision");
+    }
     if (d.module === "OSPE") return "OSPE walk-through";
     if (d.kind === "mixed") return d.date === "2026-11-06" ? "Mixed papers" : "Full mock";
     return d.module + (d.kind === "consolidation" ? " consolidation" : d.kind === "exam" ? " rapid recall" : " first pass"); }
-  function dayMod(d) { return d.kind === "mixed" ? "ALL" : (d.module || "ALL"); }
+  function dayMod(d) { var m = d.mods || []; return m.length === 1 ? m[0] : m.length ? "ALL" : (d.kind === "mixed" ? "ALL" : (d.module || "ALL")); }
+  // How full a day is, as a bar and as words. Minutes are never shown: the questions are
+  // measured but the revising isn't, so only the comparison between days is honest.
+  function loadBar(iso, add) { var b = SCH.band(iso, add || 0); return '<span class="q-ld l-' + b.key + '"><i style="width:' + b.pct + '%"></i></span>'; }
+  function loadWord(iso, add) { return SCH.band(iso, add || 0).label; }
+  function loadShort(iso, add) { return SCH.band(iso, add || 0).short; }
+  function unitSize(u) {
+    if (u.kind !== "topic") return u.kind === "ospe" ? "every station" : "the whole paper";
+    var bits = [];
+    if (u.sess.length) bits.push(u.sess.length + (u.sess.length === 1 ? " session" : " sessions"));
+    if (u.blocks.length) bits.push("questions");
+    return bits.join(" + ");
+  }
 
   function sessRow(id, showDue) {
     var it = ITEM[id], st = sessState(id), f = fmt(SESS[id].due);
@@ -124,7 +159,7 @@
   var curDate = null, planDirty = false;
   // Streak: consecutive days with something done. Timetabled rest days pause it: they neither add a day
   // nor break the run, even if work is done on them. Today only counts once something is done.
-  function isRest(iso) { return dayFor(iso).kind === "off"; }
+  function isRest(iso) { return SCH.isRestDay(iso); }
   function streakDays() {
     var t = today(), n = 0;
     for (var j = 0; j < 400; j++) { var d = addDays(t, -j);
@@ -139,8 +174,8 @@
     for (var k = 6; k >= 0; k--) { var iso = addDays(t, -k), f = fmt(iso), rest = isRest(iso);
       dots += '<span class="' + (rest ? "rest" : S.days[iso] ? "on" : "") + (k === 0 ? " today" : "") + '" title="' + f.long + (rest ? " · rest day" : "") + '">' + f.w[0] + "</span>"; }
     streak = streakDays();
-    var restToday = isRest(t);
-    return '<div class="q-hero"><div><div class="q-big">' + streak + " day" + (streak === 1 ? "" : "s") + '</div><div class="q-lbl">' + (restToday ? '<span class="q-paused">Streak paused, today is for resting</span> · ' : "practice streak · ") + ticked + " of " + ALL.length + " sessions ticked · " + setsDone + " of " + sets + ' question sets marked</div><div class="q-streak" aria-label="Days practised this week">' + dots + "</div></div>" +
+    var restToday = isRest(t), ownOff = SCH.offByUser(t);
+    return '<div class="q-hero"><div><div class="q-big">' + streak + " day" + (streak === 1 ? "" : "s") + '</div><div class="q-lbl">' + (restToday ? '<span class="q-paused">Streak paused, today is ' + (ownOff ? "a day off" : "for resting") + "</span> · " : "practice streak · ") + ticked + " of " + ALL.length + " sessions ticked · " + setsDone + " of " + sets + ' question sets marked</div><div class="q-streak" aria-label="Days practised this week">' + dots + "</div></div>" +
       '<div class="q-ring" style="--p:' + pct + '"><div><b>' + (max ? pct + "%" : "–") + "</b><small>AVG SCORE</small></div></div></div>";
   }
   function weekHtml(date) {
@@ -164,9 +199,13 @@
     if (!ids.length) return "";
     ids.sort(function (a, b) { return SESS[a].due < SESS[b].due ? -1 : 1; });
     var open = !!S.odOpen, shown = open ? ids : ids.slice(0, 5);
+    var tops = {}; ids.forEach(function (id) { tops[SESS[id].set] = 1; });
+    var nt = Object.keys(tops).length;
     return '<section class="q-group q-overdue"><div class="q-gh"><h3>Overdue</h3><span class="q-n bad">' + ids.length + '</span><span class="q-gs">Sessions from earlier days not yet ticked</span></div><div class="q-list">' +
       shown.map(function (id) { return sessRow(id, true); }).join("") + "</div>" +
-      (ids.length > 5 ? '<button class="q-more" data-od>' + (open ? "Show fewer" : "Show all " + ids.length) + "</button>" : "") + "</section>";
+      (ids.length > 5 ? '<button class="q-more" data-od>' + (open ? "Show fewer" : "Show all " + ids.length) + "</button>" : "") +
+      '<div class="q-row"><button class="q-btn pri sm" data-odmove>Find days for ' + (nt === 1 ? "this topic" : "these " + nt + " topics") + '</button></div>' +
+      '<p class="q-hint3">Nothing here is lost. Give them days with room and they stop being late.</p></section>';
   }
   // ---------- day overview: what this day asks for, how much is done, what to do next ----------
   var EXAM_START = (DATA.days.filter(function (d) { return d.kind === "exam"; })[0] || {}).date;
@@ -176,9 +215,17 @@
     return '<button class="q-todo is-' + state + '" ' + attr + '><span class="q-tick" aria-hidden="true">' + icon + '</span><span class="q-tdt"><b>' + title + "</b><small>" + sub + "</small></span>" +
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>';
   }
-  function dayOverviewHtml(d, iso) {
+  function dayOverviewHtml(d, iso, units) {
     var t = today(), isToday = iso === t;
-    var ids = Object.keys(SESS).filter(function (id) { return SESS[id].due === iso; });
+    if (SCH.offByUser(iso)) {
+      var left = units.filter(function (u) { return !u.pinned; });
+      return '<section class="q-day q-dayoff"><div class="q-dayhd"><h2>' + (isToday ? "Today is a day off" : "A day off") + "</h2></div>" +
+        '<p class="q-alldone">Nothing is expected of you. Your streak holds through it: a day off never breaks the run, and never adds a day to it.</p>' +
+        (left.length ? '<div class="q-todos">' + todoRow("todo", "Still on this day: " + left.length + (left.length === 1 ? " topic" : " topics"),
+          "Move them to days that suit you", 'data-moveday="' + iso + '"') + "</div>" : "") +
+        '<div class="q-row"><button class="q-btn sm" data-dayoff="' + iso + '">Make it a working day again</button></div></section>';
+    }
+    var ids = SCH.sessOn(iso).slice();
     var ticked = ids.filter(function (id) { return done[id]; }).length;
     var order = d.blocks.filter(function (b) { return b.kind === "set" && b.label === "First pass"; });
     order = order.concat(d.blocks.filter(function (b) { return order.indexOf(b) < 0; }));
@@ -191,6 +238,11 @@
     if (!total && !od) return "";
     var finished = ticked + marked, pct = total ? Math.round(100 * finished / total) : 100;
     var unit = function (n, one, many) { return n + " " + (n === 1 ? one : many); };
+
+    var bnd = SCH.band(iso), hot = bnd.key === "busy" || bnd.key === "heavy";
+    var movable = units.filter(function (u) { return !u.pinned; }).length;
+    var loadRow = '<div class="q-dayload' + (hot ? " hot" : "") + '"><span class="q-ldt">' + (isToday ? "Today is " : "This day is ") + bnd.label + "</span>" + loadBar(iso) +
+      (hot && movable ? '<button class="q-btn sm" data-moveday="' + iso + '">Lighten it</button>' : "") + "</div>";
 
     var rows = "";
     if (ids.length) rows += todoRow(ticked === ids.length ? "done" : "todo", "Revise " + unit(ids.length, "session", "sessions"), ticked + " of " + ids.length + " ticked", 'data-goto=".q-topic"');
@@ -213,37 +265,253 @@
     var countdown = exam == null ? "" : exam === 0 ? "Exam week starts today" : unit(exam, "day", "days") + " to exam week";
     return '<section class="q-day"><div class="q-dayhd"><h2>' + (isToday ? "Your day" : "This day's plan") + '</h2><span class="q-daypct">' + (total ? finished + " of " + total + " done" : "") + "</span></div>" +
       (total ? '<div class="q-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '" aria-label="Day progress"><i style="width:' + pct + '%"></i></div>' : "") +
-      '<div class="q-todos">' + rows + "</div>" + cta + (countdown ? '<p class="q-count2">' + countdown + "</p>" : "") + "</section>";
+      loadRow + '<div class="q-todos">' + rows + "</div>" + cta + (countdown ? '<p class="q-count2">' + countdown + "</p>" : "") + "</section>";
   }
 
   function renderToday(date) {
     curDate = date || curDate || today();
-    var d = dayFor(curDate), f = fmt(curDate), t = today();
+    var d = dayFor(curDate), f = fmt(curDate), t = today(), units = SCH.unitsOn(curDate);
     var h = '<header class="q-head"><div><p class="q-eyebrow">' + (curDate === t ? "Today" : curDate < t ? "Earlier" : "Coming up") + '</p><h1>' + f.long + '</h1></div><button class="q-icon" data-settings aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg></button></header>';
-    h += dayOverviewHtml(d, curDate) + heroHtml() + weekHtml(curDate);
+    h += dayOverviewHtml(d, curDate, units) + rescueHtml() + heroHtml() + weekHtml(curDate);
     if (curDate === t) h += overdueHtml();
-    h += '<div class="q-dayhead mod-' + dayMod(d) + '"><span class="q-chip">' + esc(dayLabel(d)) + "</span>" + (curDate !== t ? '<button class="q-btn sm" data-today>Back to today</button>' : "") + "</div>";
-    var sets = d.blocks.filter(function (b) { return b.kind === "set" && b.label === "First pass"; });
-    var others = d.blocks.filter(function (b) { return sets.indexOf(b) < 0; });
-    if (!d.blocks.length) {
+    h += dayHeadHtml(d, curDate, units);
+    var first = units.filter(function (u) { return u.round === 1; });
+    var others = units.filter(function (u) { return u.round !== 1; });
+    if (!units.length) {
       var nx = nextSetDay(curDate);
-      var msg = d.kind === "before" ? "Revision hasn't started yet." : d.kind === "after" ? "Exams are finished. Everything is still under Plan and Practice." : d.kind === "off" ? "Rest day. Nothing scheduled." : d.kind === "exam" ? "Exam day. Light recall only; yesterday's rapid-recall sets cover it." : "Nothing scheduled.";
+      var msg = SCH.offByUser(curDate) ? "A day off. Nothing scheduled." : d.kind === "before" ? "Revision hasn't started yet." : d.kind === "after" ? "Exams are finished. Everything is still under Plan and Practice." : d.kind === "off" ? "Rest day. Nothing scheduled." : d.kind === "exam" ? "Exam day. Light recall only; yesterday's rapid-recall sets cover it." : d.movedOut ? "You moved this day's work to other days." : "Nothing scheduled.";
       h += '<div class="q-empty">' + msg + (nx ? '<div><button class="q-btn sm mod-' + dayMod(nx) + '" data-date="' + nx.date + '">Next: ' + fmt(nx.date).long + " · " + esc(dayLabel(nx)) + " →</button></div>" : "") + "</div>";
     }
-    if (sets.length) {
-      var ns = sets.reduce(function (x, b) { return x + (SET_SESS[b.sid] || []).length; }, 0);
-      var nt = sets.reduce(function (x, b) { return x + (SET_SESS[b.sid] || []).filter(function (id) { return done[id]; }).length; }, 0);
-      h += '<p class="q-sum">Revise these ' + ns + " sessions (" + nt + " ticked), then answer each topic's questions and mark them.</p>";
-      sets.forEach(function (b) {
-        var ids = SET_SESS[b.sid] || [], dn = ids.filter(function (id) { return done[id]; }).length;
-        h += '<section class="q-topic mod-' + b.module + '"><div class="q-gh"><h3>' + esc(b.title) + '</h3><span class="q-n">' + dn + "/" + ids.length + '</span></div><div class="q-list">' + ids.map(function (id) { return sessRow(id, false); }).join("") + "</div>" + setButton(b) + "</section>";
-      });
+    if (first.length) {
+      var ns = first.reduce(function (x, u) { return x + u.sess.length; }, 0);
+      var nt = first.reduce(function (x, u) { return x + u.sess.filter(function (id) { return done[id]; }).length; }, 0);
+      h += '<p class="q-sum">' + (ns ? "Revise these " + ns + " sessions (" + nt + " ticked), then answer each topic's questions and mark them."
+        : "Questions on topics whose sessions sit on other days.") + "</p>";
+      first.forEach(function (u) { h += unitSection(u); });
     }
     if (others.length) {
-      h += '<p class="q-sum">' + (sets.length ? "Also today:" : d.kind === "consolidation" ? "Consolidation day: fresh questions on topics you've already covered." : d.kind === "exam" ? "Rapid recall before the exam." : "Practice papers. Answer the whole paper, then mark it.") + "</p>";
-      h += '<div class="q-cards">' + others.map(function (b) { return '<div class="q-topic mod-' + b.module + '"><div class="q-gh"><h3>' + esc(b.title) + "</h3></div>" + setButton(b) + "</div>"; }).join("") + "</div>";
+      h += '<p class="q-sum">' + (first.length ? "Also on this day:" : d.kind === "consolidation" ? "Consolidation day: fresh questions on topics you've already covered." : d.kind === "exam" ? "Rapid recall before the exam." : "Practice papers. Answer the whole paper, then mark it.") + "</p>";
+      h += '<div class="q-cards">' + others.map(function (u) {
+        var b = u.blocks.length ? BLOCKS[u.blocks[0]] : null;
+        return '<div class="q-topic mod-' + u.module + '"><div class="q-gh"><h3>' + esc(u.title) + "</h3>" + moveBtn(u) + "</div>" + movedNote(u) + (b ? setButton(b) : "") + "</div>";
+      }).join("") + "</div>";
     }
     $("tab-today-in").innerHTML = h;
+  }
+
+  // ---------- moving work to another day ----------
+  // One flow does all of it: a single topic, a whole day, or the overdue pile. Each thing
+  // she can pick up is a "unit" (schedule.js builds them), the recommendation comes back
+  // as one or two days per unit, and she can overrule any of it before anything moves.
+  function moveBtn(u) {
+    if (u.pinned) return "";
+    return '<button class="q-move" data-move="' + u.id + '" data-mday="' + u.from + '" aria-label="Move ' + esc(u.title) + ' to another day">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M4 12h6M4 17h6M14 13l4 4-4 4M18 17H9"/></svg>Move</button>';
+  }
+  function movedNote(u) {
+    if (!u.moved) return "";
+    return '<p class="q-movedfrom">Moved here from ' + SCH.fmtShort(u.home) + ' · <button class="q-link2" data-putback="' + u.id + '" data-mday="' + u.from + '">put it back</button></p>';
+  }
+  function unitSection(u) {
+    var ids = u.sess, dn = ids.filter(function (id) { return done[id]; }).length;
+    var b = u.blocks.length ? BLOCKS[u.blocks[0]] : null;
+    var away = (SET_SESS[u.sid] || []).filter(function (id) { return SESS[id].due !== u.from; });
+    var h = '<section class="q-topic mod-' + u.module + '"><div class="q-gh"><h3>' + esc(u.title) + "</h3>" +
+      (ids.length ? '<span class="q-n">' + dn + "/" + ids.length + "</span>" : "") + moveBtn(u) + "</div>" + movedNote(u);
+    if (ids.length) h += '<div class="q-list">' + ids.map(function (id) { return sessRow(id, false); }).join("") + "</div>";
+    if (away.length) {
+      var ds = {};
+      away.forEach(function (id) { ds[SESS[id].due] = (ds[SESS[id].due] || 0) + 1; });
+      h += '<p class="q-elsewhere">' + Object.keys(ds).sort().map(function (iso) {
+        return ds[iso] + (ds[iso] === 1 ? " session is" : " sessions are") + ' on <button class="q-link2" data-date="' + iso + '">' + SCH.fmtShort(iso) + "</button>";
+      }).join(", ") + ".</p>";
+    }
+    if (b) h += setButton(b);
+    else { var qd = SCH.dayOfBlock(u.sid + "-R1");
+      h += '<p class="q-elsewhere">Its questions are on <button class="q-link2" data-date="' + qd + '">' + SCH.fmtShort(qd) + "</button>.</p>"; }
+    return h + "</section>";
+  }
+  function dayHeadHtml(d, iso, units) {
+    var t = today(), movable = units.filter(function (u) { return !u.pinned; }).length;
+    var inPlan = iso >= FIRST && iso <= LAST, offable = inPlan && d.kind !== "exam";
+    return '<div class="q-dayhead mod-' + dayMod(d) + '"><span class="q-chip">' + esc(dayLabel(d)) + "</span>" +
+      (iso !== t ? '<button class="q-btn sm" data-today>Back to today</button>' : "") + '<span class="q-spacer"></span>' +
+      (movable ? '<button class="q-btn sm" data-moveday="' + iso + '">Move this day’s work</button>' : "") +
+      (offable ? '<button class="q-btn sm' + (SCH.offByUser(iso) ? " ok" : "") + '" data-dayoff="' + iso + '">' + (SCH.offByUser(iso) ? "Working day" : "Day off") + "</button>" : "") +
+      "</div>";
+  }
+  // The streak rescue. A working day with nothing ticked ends the run; if that day was
+  // really a day off, saying so keeps the run — and never adds a day to it.
+  function rescueHtml() {
+    if (curDate !== today()) return "";
+    var r = SCH.missedDays(S.days);
+    if (!r) return "";
+    var key = r.dates.join(",");
+    if (S.rescueX === key) return "";
+    var names = r.dates.map(function (iso) { var f = fmt(iso); return f.w + " " + f.d + " " + f.m; });
+    var one = r.dates.length === 1;
+    return '<section class="q-rescue"><b>Your ' + r.had + "-day run stopped at " + names[0] + "</b>" +
+      "<p>Nothing was ticked on " + names.join(", ") + ", so the count started again. If " + (one ? "that was a day off" : "those were days off") +
+      ", say so and the run carries on. Marking a day off keeps the run but never adds a day to it.</p>" +
+      '<div class="q-row"><button class="q-btn pri sm" data-rescue="' + key + '">' + (one ? "It was a day off" : "They were days off") + "</button>" +
+      '<button class="q-btn sm" data-rescuex="' + key + '">Leave it</button></div></section>';
+  }
+  function findUnit(id, day) {
+    var us = id.indexOf("O:") === 0 ? SCH.overdueUnits(done) : SCH.unitsOn(day || curDate);
+    for (var i = 0; i < us.length; i++) if (us[i].id === id) return us[i];
+    return null;
+  }
+  function afterChange(msg, before) {
+    resched(); refresh();
+    toast(msg, 6000, {label: "Undo", fn: function () { SCH.undo(before); resched(); refresh(); toast("Put back."); }});
+  }
+
+  var MV = null;   // the move sheet: {units, A (unit id -> parts), day, rest, off, custom}
+  function openMove(units, opts) {
+    units = (units || []).filter(function (u) { return !u.pinned; });
+    if (!units.length) { toast("There is nothing here that can be moved."); return; }
+    opts = opts || {};
+    MV = {units: units, day: opts.day || null, head: opts.head || null, base: opts.base || null,
+      rest: true, off: !!opts.day && !SCH.offByUser(opts.day), custom: {}};
+    replan(); renderMove();
+  }
+  function replan() {
+    var extra = {}, auto = [];
+    MV.units.forEach(function (u) {
+      var c = MV.custom[u.id];
+      if (c) c.forEach(function (p) { extra[p.date] = (extra[p.date] || 0) + p.mins; });
+      else auto.push(u);
+    });
+    var A = SCH.plan(auto, {rest: MV.rest, extra: extra});
+    MV.units.forEach(function (u) { if (MV.custom[u.id]) A[u.id] = MV.custom[u.id]; });
+    MV.A = A;
+  }
+  function partWord(p) {
+    var bits = [];
+    if (p.sess.length) bits.push(p.sess.length + (p.sess.length === 1 ? " session" : " sessions"));
+    if (p.blocks.length) bits.push("questions");
+    return bits.join(" + ");
+  }
+  function renderMove() {
+    var day = MV.day, f = day ? fmt(day) : null;
+    var head = MV.head || (day ? "Move " + f.long : "Move " + MV.units[0].title);
+    var after = {}, usesRest = false, stuck = 0;
+    MV.units.forEach(function (u) {
+      var parts = MV.A[u.id] || [];
+      if (!parts.length) stuck++;
+      parts.forEach(function (p) { after[p.date] = (after[p.date] || 0) + p.mins; if (SCH.dayKind(p.date) === "off") usesRest = true; });
+    });
+    var dates = Object.keys(after).sort();
+    var rows = MV.units.map(function (u) {
+      var parts = MV.A[u.id] || [];
+      return '<div class="q-mv"><div class="q-mvt"><b>' + esc(u.title) + "</b><small>" + (u.label ? esc(u.label) + " · " : "") + unitSize(u) +
+        " · by " + SCH.fmtShort(u.max) + " (" + u.why + ")</small></div>" +
+        '<button class="q-mvto" data-pick="' + u.id + '">' +
+        (parts.length ? parts.map(function (p) {
+          return '<span class="p"><span class="d">' + SCH.fmtShort(p.date) + '</span><span class="n">' + partWord(p) +
+            (SCH.dayKind(p.date) === "off" ? " · rest day" : "") + "</span></span>";
+        }).join('<span class="plus">then</span>') : '<span class="p"><span class="d bad">No room before ' + SCH.fmtShort(u.max) + '</span><span class="n">pick a day yourself</span></span>') +
+        '<span class="q-mvch">Change</span></button></div>';
+    }).join("");
+    var toggles = '<label class="q-row-t"><span><b>Use my rest days</b><small>' +
+      (usesRest ? "A rest day is being used. Turn this off to keep them free — the work then lands closer to the exams."
+        : "Rest days are being kept free.") + '</small></span><input type="checkbox" class="q-switch on-accent" data-rest' + (MV.rest ? " checked" : "") + "></label>" +
+      (day ? '<label class="q-row-t"><span><b>Mark ' + f.w + " " + f.d + " " + f.m + ' as a day off</b><small>Your streak holds through it. It will not add a day to the streak.</small></span>' +
+        '<input type="checkbox" class="q-switch on-accent" data-off' + (MV.off ? " checked" : "") + "></label>" : "");
+    var preview = dates.length ? '<div class="q-sub">How those days end up</div><div class="q-after">' + dates.map(function (iso) {
+      return '<div class="q-aft"><span class="d">' + SCH.fmtShort(iso) + "</span>" + loadBar(iso, after[iso]) + '<span class="w">' + loadShort(iso, after[iso]) + "</span></div>";
+    }).join("") + "</div>" : "";
+    var n = MV.units.length - stuck;
+    var sh = sheet("<h3>" + esc(head) + "</h3><p>" + (day ? (MV.units.length === 1 ? "One topic" : MV.units.length + " topics") + " to re-home. "
+      : "") + "Every day is checked against its deadline, and nothing is dropped on a day that is already full.</p>" +
+      '<div class="q-mvlist">' + rows + "</div>" + toggles + preview +
+      '<div class="q-row"><button class="q-btn wide" data-close>Cancel</button><button class="q-btn pri wide" data-go' + (n ? "" : " disabled") + ">" +
+      (n ? "Move " + n + (n === 1 ? " topic" : " topics") : "Nothing to move") + "</button></div>", day ? dayMod(dayFor(day)) : MV.units[0].module);
+    sh.querySelector("[data-close]").onclick = function () { sh.hidden = true; MV = null; };
+    sh.querySelector("[data-go]").onclick = doMove;
+    sh.querySelector("[data-rest]").onchange = function () { MV.rest = this.checked; replan(); renderMove(); };
+    var off = sh.querySelector("[data-off]");
+    if (off) off.onchange = function () { MV.off = this.checked; };
+    [].forEach.call(sh.querySelectorAll("[data-pick]"), function (x) {
+      x.onclick = function () { var u = null;
+        MV.units.forEach(function (y) { if (y.id === x.dataset.pick) u = y; });
+        if (u) renderPick(u); };
+    });
+  }
+  function weekOf(iso) { return SCH.addDays(iso, -((new Date(iso + "T12:00:00").getDay() + 6) % 7)); }
+  function renderPick(u) {
+    var rec = SCH.bestDays(u, 3, {rest: MV.rest}), parts = SCH.plan([u], {rest: MV.rest})[u.id] || [];
+    var byWeek = {}, order = [];
+    SCH.options(u).forEach(function (o) {
+      var mon = weekOf(o.date);
+      if (!byWeek[mon]) { byWeek[mon] = []; order.push(mon); }
+      byWeek[mon].push(o);
+    });
+    var h = "<h3>Which day?</h3><p>" + esc(u.title) + " · " + unitSize(u) + ". Needs to be done by <b>" + SCH.fmtShort(u.max) + "</b> (" + u.why + ").</p>";
+    if (rec.length) h += '<div class="q-sub">Suggested</div><div class="q-chips2">' + rec.map(function (iso) {
+      return '<button class="q-chipday" data-day="' + iso + '"><b>' + SCH.fmtShort(iso) + "</b><small>" + loadWord(iso, u.mins) + "</small></button>";
+    }).join("") + "</div>";
+    if (parts.length > 1) h += '<div class="q-row"><button class="q-btn sm" data-split>Split it: ' + parts.map(function (p) { return partWord(p) + " on " + SCH.fmtShort(p.date); }).join(", then ") + "</button></div>";
+    h += '<div class="q-sub">Any day · how full it would then be</div><div class="q-days">';
+    order.forEach(function (mon) {
+      h += '<div class="q-dwk">' + (mon === weekOf(today()) ? "This week" : "Week of " + SCH.fmtShort(mon)) + "</div>";
+      byWeek[mon].forEach(function (o) {
+        var note = o.off ? "day off" : o.exam ? "exam day" : o.here ? "where it is now" : o.rest ? "rest day" : (SCH.dayKindLabel(o.date) || "");
+        h += '<button class="q-dayopt" data-day="' + o.date + '"' + (o.blocked || o.here ? " disabled" : "") + '><span class="d">' + SCH.fmtShort(o.date) +
+          (o.date === today() ? " · today" : "") + '</span><span class="t">' + note + "</span>" +
+          (o.blocked ? '<span class="q-ld"></span><span class="w">—</span>' : loadBar(o.date, u.mins) + '<span class="w">' + loadShort(o.date, u.mins) + "</span>") + "</button>";
+      });
+    });
+    h += '</div><div class="q-row"><button class="q-btn wide" data-back>Back</button></div>';
+    var sh = sheet(h, u.module);
+    sh.querySelector("[data-back]").onclick = renderMove;
+    var sp = sh.querySelector("[data-split]");
+    if (sp) sp.onclick = function () { delete MV.custom[u.id]; replan(); renderMove(); };
+    [].forEach.call(sh.querySelectorAll("[data-day]"), function (x) {
+      x.onclick = function () {
+        MV.custom[u.id] = [{date: x.dataset.day, sess: u.sess, blocks: u.blocks, mins: u.mins}];
+        replan(); renderMove();
+      };
+    });
+  }
+  function doMove() {
+    var moves = [], n = 0;
+    MV.units.forEach(function (u) {
+      var parts = MV.A[u.id] || [];
+      if (!parts.length) return;
+      parts.forEach(function (p) { moves.push({sess: p.sess, blocks: p.blocks, to: p.date}); });
+      n++;
+    });
+    var day = MV.day, off = day && MV.off, base = MV.base;
+    var before = SCH.move(moves);
+    if (base) before = base;                       // undo must also take back the day off
+    if (off && !SCH.offByUser(day)) SCH.setOff(day, true);
+    $("q-sheet").hidden = true; MV = null;
+    resched(); refresh();
+    toast("Moved " + n + (n === 1 ? " topic" : " topics") + (off ? ", and that day is marked off" : "") + ".", 7000,
+      {label: "Undo", fn: function () { SCH.undo(before); resched(); refresh(); toast("Put back where it was."); }});
+  }
+  function putBackUnit(id, day) {
+    var u = findUnit(id, day);
+    if (!u) return;
+    afterChange("Back on " + SCH.fmtShort(u.home) + ".", SCH.putBack([u]));
+  }
+  function dayOffFlow(iso) {
+    if (SCH.offByUser(iso)) { afterChange("Back to a working day.", SCH.setOff(iso, false)); return; }
+    var units = SCH.unitsOn(iso).filter(function (u) { return !u.pinned; }), f = fmt(iso);
+    var sh = sheet("<h3>Mark " + f.long + " as a day off?</h3>" +
+      "<p>Your streak holds through a day off: it will not break, and it will not add a day either. You can take it back whenever you like.</p>" +
+      (units.length ? "<p><b>" + units.length + (units.length === 1 ? " topic is" : " topics are") + " still on this day.</b> Moving that work is the point of a day off — left here it only turns red.</p>" : "") +
+      (units.length ? '<div class="q-row"><button class="q-btn pri wide" data-both>Mark it off and move the work</button></div>' : "") +
+      '<div class="q-row"><button class="q-btn wide" data-close>Cancel</button><button class="q-btn wide' + (units.length ? "" : " pri") + '" data-just>' +
+      (units.length ? "Just mark it off" : "Mark it off") + "</button></div>", dayMod(dayFor(iso)));
+    sh.querySelector("[data-close]").onclick = function () { sh.hidden = true; };
+    sh.querySelector("[data-just]").onclick = function () { sh.hidden = true; afterChange("Marked as a day off.", SCH.setOff(iso, true)); };
+    var both = sh.querySelector("[data-both]");
+    if (both) both.onclick = function () {
+      var base = SCH.setOff(iso, true); resched();
+      openMove(SCH.unitsOn(iso), {day: iso, base: base, head: "Where should " + f.long + "’s work go?"});
+    };
   }
 
   // ---------- PRACTICE ----------
@@ -286,6 +554,24 @@
     var holder = $("q-progress-body"); holder.innerHTML = h;
   }
 
+  // Everything she has changed about the timetable, in one place, each line reversible.
+  function planGroupHtml(open) {
+    var moved = SCH.movedUnits(), offs = SCH.offDays();
+    var sub = !moved.length && !offs.length ? "Nothing moved \u2014 the timetable is as it was written"
+      : [moved.length ? moved.length + (moved.length === 1 ? " topic moved" : " topics moved") : "",
+         offs.length ? offs.length + (offs.length === 1 ? " day off" : " days off") : ""].filter(function (x) { return x; }).join(" · ");
+    var h = '<details class="q-howto"' + (open ? " open" : "") + '><summary><span><b>Moved work and days off</b><small>' + sub +
+      '</small></span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></summary><div class="q-notes q-schlist">';
+    if (!moved.length && !offs.length) h += "<p>Move a topic from the day it is on (Today \u2192 Move), or mark a day off, and it is listed here so you can see what you changed and put any of it back.</p>";
+    if (offs.length) h += '<div class="q-sub">Days off</div>' + offs.map(function (iso) {
+      return '<div class="q-mvrow"><span><b>' + SCH.fmtShort(iso) + "</b><small>" + (SCH.hasWork(iso) ? "still has work on it" : "clear") +
+        '</small></span><button class="q-btn sm" data-sdoff="' + iso + '">Working day</button></div>'; }).join("");
+    if (moved.length) h += '<div class="q-sub">Moved</div>' + moved.map(function (u) {
+      return '<div class="q-mvrow"><span><b>' + esc(u.title) + "</b><small>" + unitSize(u) + " · " + SCH.fmtShort(u.home) + " \u2192 " + SCH.fmtShort(u.from) +
+        '</small></span><button class="q-btn sm" data-spb="' + u.id + '" data-mday="' + u.from + '">Put back</button></div>'; }).join("");
+    if (moved.length || offs.length) h += '<div class="q-row"><button class="q-btn sm" data-sreset>Put the whole timetable back</button></div>';
+    return h + "</div></details>";
+  }
   function howItWorksHtml() {
     return '<div class="q-notes"><ul>' +
       "<li><b>Today</b> lists the sessions due today with that topic's questions underneath. Tick each session when you've revised it.</li>" +
@@ -294,7 +580,11 @@
       "<li><b>Think first</b> (Settings → Practice) hides the options on single best answer questions until you tap Show options. Answering from memory first is a better test, and the options can't hint at the answer.</li>" +
       "<li>Single best answer, extended matching and fill in the blank mark themselves. For short answers and OSPE stations you mark yourself against the mark scheme.</li>" +
       "<li>Fill in the blank forgives small typos, British or American spelling and plurals, and shows the correct spelling. It won't accept a different real term (hypo for hyper, ilium for ileum), and numbers must be exact. You can overrule it either way.</li>" +
-      "<li>Your streak counts days you did something. Rest days pause it: they don't add a day and don't break it.</li>" +
+      "<li>Your streak counts days you did something. Rest days and days you mark off pause it: they don't add a day and don't break the run.</li>" +
+      "<li><b>Moving work.</b> Tap <b>Move</b> on a topic, or <b>Move this day's work</b> at the top of a day. The app suggests days that still meet the deadline and aren't already full, splitting a big topic over two days rather than dropping a mountain on one. Change any of it before you confirm, and undo it after.</li>" +
+      "<li>A move can't break the plan's order: a first pass stays before its consolidation day, consolidation before rapid recall, and everything before its exam. The day list shows how full each day would end up.</li>" +
+      "<li><b>Days off.</b> A day you can't work on is marked off at the top of that day. It pauses the streak and prompts you to re-home its work. It works on a day that has already gone, which is how a missed day is put right.</li>" +
+      "<li>Overdue sessions have a <b>Find days for these</b> button. Nothing is ever lost by being late \u2014 it just needs a day with room.</li>" +
       "<li>Each first-pass set covers every learning outcome for its topic; extra questions needed for that are labelled LO top-up.</li>" +
       "<li>Everything saves on this phone. Save a backup now and then (Settings → Your data).</li></ul></div>";
   }
@@ -345,8 +635,14 @@
     if (sel.streak) out.push("your practice streak (" + c.days + " " + (c.days === 1 ? "day" : "days") + " of history)");
     return {lines:out, total:c.ticks + c.sets + c.answers + c.flags + c.days};
   }
-  function toast(msg, ms) { var t = $("q-toast"); if (!t) { t = document.createElement("div"); t.id = "q-toast"; t.className = "q-toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
-    t.textContent = msg; t.dataset.show = "true"; clearTimeout(t._h); t._h = setTimeout(function () { t.dataset.show = "false"; }, ms || 3500); }
+  function toast(msg, ms, act) {
+    var t = $("q-toast");
+    if (!t) { t = document.createElement("div"); t.id = "q-toast"; t.className = "q-toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
+    t.innerHTML = "";
+    var sp = document.createElement("span"); sp.textContent = msg; t.appendChild(sp);
+    if (act) { var b = document.createElement("button"); b.type = "button"; b.textContent = act.label;
+      b.onclick = function () { t.dataset.show = "false"; act.fn(); }; t.appendChild(b); }
+    t.dataset.show = "true"; clearTimeout(t._h); t._h = setTimeout(function () { t.dataset.show = "false"; }, ms || 3500); }
 
   function openSettings(section) {
     var ov = ovShell("ALL"), mode = themeMode(), accent = accentName();
@@ -359,6 +655,7 @@
       '<div class="q-srow"><span><b>Colour</b><small>' + ACCENTS.filter(function (o) { return o[0] === accent; })[0][1] + '</small></span></div>' +
       '<div class="q-swatches" role="radiogroup" aria-label="Colour">' + ACCENTS.map(function (o) { return '<button role="radio" aria-checked="' + (accent === o[0]) + '" aria-label="' + o[1] + '" data-accent="' + o[0] + '" style="--sw:' + o[2] + '"><span></span>' + o[1] + "</button>"; }).join("") + "</div></div>" +
       '<p class="q-slabel">Practice</p><div class="q-sgroup"><label class="q-row-t"><span><b>Think first</b><small>Hide the options on single best answer questions until you tap Show options, so you answer from memory</small></span><input type="checkbox" class="q-switch on-accent" data-think' + (thinkFirst() ? " checked" : "") + "></label></div>" +
+      '<p class="q-slabel">Your plan</p><div class="q-sgroup">' + planGroupHtml(section === "plan") + "</div>" +
       '<p class="q-slabel">Help</p><div class="q-sgroup"><details class="q-howto"' + (section === "help" ? " open" : "") + '><summary><span><b>How it works</b><small>Ticking, colours, questions and marking</small></span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></summary>' + howItWorksHtml() + "</details></div>" +
       '<p class="q-slabel">Your data</p><div class="q-sgroup"><button class="q-srow q-link" data-bk="export"><span><b>Save a backup</b><small>Ticks, flags and question answers in one file</small></span><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></button>' +
       '<button class="q-srow q-link" data-bk="import"><span><b>Restore from a backup</b><small>Adds anything missing; never removes progress</small></span><svg viewBox="0 0 24 24"><path d="M12 21V9M7 14l5-5 5 5M5 3h14"/></svg></button></div>' +
@@ -375,6 +672,23 @@
     [].forEach.call(ov.querySelectorAll("[data-mode]"), function (b) { b.onclick = function () { setTheme(b.dataset.mode); [].forEach.call(ov.querySelectorAll("[data-mode]"), function (x) { x.setAttribute("aria-checked", x === b); }); }; });
     [].forEach.call(ov.querySelectorAll("[data-rs]"), function (x) { x.onchange = function () { RS[x.dataset.rs] = x.checked; updGo(); }; });
     [].forEach.call(ov.querySelectorAll("[data-rm]"), function (x) { x.onchange = function () { RS.mods[x.dataset.rm] = x.checked; updGo(); }; });
+    [].forEach.call(ov.querySelectorAll("[data-sdoff]"), function (x) {
+      x.onclick = function () { var b = SCH.setOff(x.dataset.sdoff, false); resched(); openSettings("plan");
+        toast("Back to a working day.", 6000, {label: "Undo", fn: function () { SCH.undo(b); resched(); openSettings("plan"); }}); };
+    });
+    [].forEach.call(ov.querySelectorAll("[data-spb]"), function (x) {
+      x.onclick = function () { var u = findUnit(x.dataset.spb, x.dataset.mday); if (!u) return;
+        var b = SCH.putBack([u]); resched(); openSettings("plan");
+        toast("Back on " + SCH.fmtShort(u.home) + ".", 6000, {label: "Undo", fn: function () { SCH.undo(b); resched(); openSettings("plan"); }}); };
+    });
+    var sres = ov.querySelector("[data-sreset]");
+    if (sres) sres.onclick = function () {
+      var sh = sheet("<h3>Put the whole timetable back?</h3><p>Every move is undone and every day off cleared, back to the timetable as it was written. Your ticks, answers and streak are not touched.</p>" +
+        '<div class="q-row"><button class="q-btn wide" data-close>Keep my changes</button><button class="q-btn pri wide" data-yes>Put it back</button></div>', "ALL");
+      sh.querySelector("[data-close]").onclick = function () { sh.hidden = true; };
+      sh.querySelector("[data-yes]").onclick = function () { sh.hidden = true; var b = SCH.resetAll(); resched(); openSettings("plan");
+        toast("Timetable put back.", 7000, {label: "Undo", fn: function () { SCH.undo(b); resched(); openSettings("plan"); }}); };
+    };
     ov.querySelector('[data-bk="export"]').onclick = function () { $("bk-export").click(); toast("Backup saved to your downloads."); };
     ov.querySelector('[data-bk="import"]').onclick = function () { $("bk-import").click(); };
     var go = ov.querySelector("[data-reset-go]");
@@ -570,6 +884,18 @@
       renderToday(pick || tg); return; }
     if ((x = e.target.closest("[data-od]"))) { S.odOpen = !S.odOpen; save(); renderToday(); return; }
     if ((x = e.target.closest("[data-settings]"))) { openSettings(); return; }
+    if ((x = e.target.closest("[data-move]"))) { var mu = findUnit(x.dataset.move, x.dataset.mday); if (mu) openMove([mu]); return; }
+    if ((x = e.target.closest("[data-moveday]"))) { var md = x.dataset.moveday;
+      openMove(SCH.unitsOn(md), {day: md, head: "Move " + fmt(md).long + "\u2019s work"}); return; }
+    if ((x = e.target.closest("[data-odmove]"))) { openMove(SCH.overdueUnits(done), {head: "Find days for the overdue work"}); return; }
+    if ((x = e.target.closest("[data-dayoff]"))) { dayOffFlow(x.dataset.dayoff); return; }
+    if ((x = e.target.closest("[data-putback]"))) { putBackUnit(x.dataset.putback, x.dataset.mday); return; }
+    if ((x = e.target.closest("[data-rescue]"))) {
+      var ds = x.dataset.rescue.split(","), b0 = null;
+      ds.forEach(function (iso) { var st = SCH.setOff(iso, true); if (!b0) b0 = st; });
+      afterChange(ds.length === 1 ? "Marked as a day off \u2014 your run carries on." : ds.length + " days marked off \u2014 your run carries on.", b0);
+      return; }
+    if ((x = e.target.closest("[data-rescuex]"))) { S.rescueX = x.dataset.rescuex; save(); renderToday(); return; }
     if ((x = e.target.closest("[data-goto]"))) { var el = $("tab-today-in").querySelector(x.dataset.goto); if (el) el.scrollIntoView({behavior: "smooth", block: "start"}); return; }
   });
   document.addEventListener("change", function (e) {
@@ -597,12 +923,14 @@
 
   // backup: include question answers alongside ticks
   window.qbSnapshot = function () { return S; };
+  window.qbRestoreSched = function (x) { var n = SCH.restore(x); if (n) { resched(); refresh(); } return n; };
   window.qbRestore = function (q) { if (!q || typeof q !== "object") return 0; var n = 0;
     ["a","marked","days"].forEach(function (k) { var src = q[k] || {}; S[k] = S[k] || {}; Object.keys(src).forEach(function (id) { if (!(id in S[k])) { S[k][id] = src[id]; n++; } }); });
     repairLostAnswers(); save(); planDirty = true; refresh(); return n; };
 
   $("theme").addEventListener("click", function () { openSettings(); });
   var start = "today"; try { start = sessionStorage.getItem("nicole-tab") || "today"; } catch (e) {}
+  resched();
   render(); // recolour Plan now that session states exist
   showTab(TABS.indexOf(start) >= 0 ? start : "today");
   if (repaired) setTimeout(function () { toast("A bug stopped answers saving. " + repaired + " question " + (repaired === 1 ? "set has" : "sets have") + " been reopened so you can redo " + (repaired === 1 ? "it" : "them") + ".", 9000); }, 600);

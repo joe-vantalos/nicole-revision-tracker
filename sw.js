@@ -1,13 +1,13 @@
 /* Nicole's Revision Tracker - service worker
    Strategy:
-     app files (index.html, qb.js, questions.js)
+     app files (index.html, qb.js, schedule.js, questions.js)
                          -> stale-while-revalidate: instant launch, update lands next launch
      icons + manifest    -> cache-first (they rarely change; bump VERSION to force)
      Google Fonts        -> cache-first (URLs are versioned, so a hit is always correct)
      anything else       -> network
 */
 
-var VERSION = "v5";
+var VERSION = "v6";
 var SHELL = "shell-" + VERSION;
 var FONTS = "fonts-" + VERSION;
 
@@ -17,6 +17,7 @@ var PRECACHE = [
   "./manifest.webmanifest",
   "./questions.js",
   "./mark.js",
+  "./schedule.js",
   "./qb.js",
   "./icons/icon-180.png",
   "./icons/icon-192.png",
@@ -47,7 +48,7 @@ self.addEventListener("activate", function (e) {
   );
 });
 
-var APP_FILES = ["index.html", "mark.js", "qb.js", "questions.js"];
+var APP_FILES = ["index.html", "mark.js", "qb.js", "questions.js", "schedule.js"];
 
 function isFont(url) {
   return url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com";
@@ -86,7 +87,7 @@ self.addEventListener("fetch", function (e) {
   if (url.origin !== self.location.origin) return;
 
   // --- the app files: serve cached instantly, refresh in the background ---
-  // All three change together when the app is updated, so all three are revalidated;
+  // They change together when the app is updated, so all of them are revalidated;
   // a cache-first qb.js would keep running old code after index.html moved on.
   var file = req.mode === "navigate" ? "index.html" : url.pathname.split("/").pop();
   if (APP_FILES.indexOf(file) >= 0) {
