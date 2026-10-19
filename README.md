@@ -11,6 +11,7 @@ address bar, works with no signal, and keeps her progress on her phone.
     mark.js                 lenient marking for fill-in-the-blank answers
     questions.js            the question bank and timetable (generated data)
     sw.js                   service worker — makes it load instantly and work offline
+    tools/audit-mcq.js      checks the multiple-choice questions for answer-giveaway clues
     icons/                  home screen icons (icons/src/ holds the SVG originals)
 
 ## How it stores progress
@@ -22,6 +23,7 @@ Ticks and flags go into `localStorage` on her phone, under these keys:
     nicole-revision-open        which weeks are expanded
     nicole-revision-theme       light/dark choice
     nicole-revision-accent      colour theme (green when unset)
+    nicole-revision-think       Think first setting (off when unset)
     nicole-qbank-v2             question answers, marked sets, practice streak
 
 There is no server and no account. This is why it is instant — a tick is a
@@ -63,6 +65,18 @@ are still sitting under the old address, unreachable from the new one.
 
 If you ever have to move it: export a backup from the old URL first, then
 restore it at the new one.
+
+## Checking the multiple-choice questions
+
+Run `node tools/audit-mcq.js` after changing or adding questions. It checks every single
+best answer question for clues that give the answer away without knowing the subject:
+the right option being longer than the rest, the only one with brackets or hedge words
+("usually", "may"), or the only one without words like "only" or "never". It prints
+how often the right answer is the longest option (chance is 20%) and what a student who
+never reads the question would score, and exits with an error if either is too high.
+`--list` names each question that breaks a rule.
+
+`tools/mcq-review.md` lists the few rewritten questions a reviewer was not fully sure of.
 
 ## Updating it later
 
