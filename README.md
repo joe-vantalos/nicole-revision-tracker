@@ -8,6 +8,7 @@ address bar, works with no signal, and keeps her progress on her phone.
     index.html              the app (the original tracker plus the app plumbing)
     manifest.webmanifest    name, icon and colours the phone reads when installing
     qb.js                   Today / Practice / Progress tabs, question player, settings
+    schedule.js             moving work to other days, days off, and the day-picking rules
     mark.js                 lenient marking for fill-in-the-blank answers
     questions.js            the question bank and timetable (generated data)
     sw.js                   service worker — makes it load instantly and work offline
@@ -25,10 +26,54 @@ Ticks and flags go into `localStorage` on her phone, under these keys:
     nicole-revision-accent      colour theme (green when unset)
     nicole-revision-think       Think first setting (off when unset)
     nicole-qbank-v2             question answers, marked sets, practice streak
+    nicole-schedule-v1          work moved to other days, and days marked off
 
-There is no server and no account. This is why it is instant — a tick is a
+A backup file carries all of it, including the moved work and days off. There is no
+server and no account. This is why it is instant — a tick is a
 local write, never a network call. The trade-off is that progress lives on
 that one phone, which is what the in-app backup is for.
+
+## Moving work to another day
+
+The timetable in `questions.js` is fixed, generated data. `schedule.js` keeps her changes
+to it separately and projects them onto that data before the app reads it, so every tab
+shows the real plan and nothing else needs to know that moves exist. Two things can be
+changed: which day a topic sits on (`moveB` for its questions, `moveS` for its sessions),
+and which days she has marked off (`off`). An entry only exists while it differs from the
+timetable, so putting something back is a delete.
+
+What she moves is a **topic**: a set's sessions together with its question set. They
+travel together because the questions only make sense after the revising. A big topic can
+be split over two days, with the questions landing on the second.
+
+Nothing may land where it would break the plan's own order. A first pass has to stay
+before its consolidation day, consolidation before its rapid recall, and everything
+before that module's exam. Exam days can't be filled at all, and the sets that sit on them
+can't be moved.
+
+### How a day is picked
+
+Days are compared by how full they are. Question minutes are the same estimate the set
+buttons show; the time a session takes to revise isn't knowable, so `SESSION_W` is a fixed
+weight used only to compare one day with another. `TYPICAL` is the middling day of the
+timetable *as written* — comparing against her own plan means the words (quiet, about
+usual, a heavy day) hold however long she actually takes.
+
+The planner fills the soonest day that still has room, at `CEIL` (1.15 × typical) first
+and only then at `HARD` (1.5 ×), tightest deadline first, with every placement counting
+towards that day for whatever is placed after it. That is what spreads a cleared day over
+several days instead of dumping it on one. A timetabled rest day counts as part-full
+before anything lands on it, so a working day with room always wins and her Saturdays are
+only used when the alternative is a heavy day — and there is a switch in the move sheet to
+keep them free. Her own picks always win over all of this.
+
+### Days off and the streak
+
+A day she marks off pauses the streak exactly as a timetabled rest day does: it doesn't
+break the run and doesn't add a day to it. That works on a day that has already gone,
+which is how a missed day is put right — Today offers it when a run of two or more has
+just been interrupted. A timetabled rest day stops counting as rest once work has been
+moved onto it, so the work she does there still counts.
 
 ## Deploying (GitHub Pages)
 
@@ -81,10 +126,10 @@ never reads the question would score, and exits with an error if either is too h
 ## Updating it later
 
 Edit `index.html` (the `DATA` array near the top of the `<script>` holds every
-session), `qb.js`, `mark.js` or `questions.js` and re-upload. Her phone picks the change
-up on the launch after next: the service worker serves the cached copy
+session), `qb.js`, `schedule.js`, `mark.js` or `questions.js` and re-upload. Her phone
+picks the change up on the launch after next: the service worker serves the cached copy
 instantly, fetches the new one in the background, and shows a "Reload" pill
-when it lands. Those three files are always re-checked; icons and the manifest
+when it lands. Those files are always re-checked; icons and the manifest
 are not.
 
 If you change `sw.js` itself, or the icons or manifest, bump `VERSION` at the
