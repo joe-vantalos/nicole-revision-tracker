@@ -552,7 +552,7 @@
   var BACK = '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>';
   var MORE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
   var ROUND = ["", "First pass", "Consolidation", "Rapid recall"];
-  var PV = {v: "hub", mod: null}; // which hub screen is showing; mod null = where she is now
+  var PV = {v: "hub", mod: "GIL"}; // which hub screen is showing
 
   // Where each block sits in the plan now, after any moves she has made.
   function whenOf() { var w = {}; DATA.days.forEach(function (d) { d.blocks.forEach(function (b) { w[b.key] = d.date; }); }); return w; }
@@ -564,66 +564,69 @@
       .sort(function (a, b) { var x = when[a.rounds[0].key], y = when[b.rounds[0].key]; return x < y ? -1 : x > y ? 1 : (a.sid < b.sid ? -1 : 1); });
   }
   // The earliest set not yet marked, in plan order; first passes go before the rest of a day, as on Today.
+  function upNext(m) {
+    for (var i = 0; i < DATA.days.length; i++) { var d = DATA.days[i];
+      var order = d.blocks.filter(function (b) { return b.kind === "set" && b.label === "First pass"; });
+      order = order.concat(d.blocks.filter(function (b) { return order.indexOf(b) < 0; }));
+      for (var k = 0; k < order.length; k++) { var b = order[k]; if (m && b.module !== m) continue; if (!S.marked[b.key]) return {b: b, date: d.date}; } }
+    return null;
+  }
   function whenLabel(iso) { var t = today(), f = fmt(iso); return iso === t ? "Today" : (iso < t ? "Overdue · " : "") + f.w + " " + f.d + " " + f.m; }
   function weakSets() { return Object.keys(BLOCKS).map(function (k) { return [BLOCKS[k], blockInfo(BLOCKS[k])]; })
     .filter(function (p) { return p[1].marked && p[1].pct != null && p[1].pct < 60; }).sort(function (a, b) { return a[1].pct - b[1].pct; }); }
+  function hubRow(attrs, title, sub, icon, mod, badge) {
+    return '<button class="ph-row mod-' + mod + '" ' + attrs + '><span class="ph-rt"><b>' + title + "</b><small>" + sub + '</small></span><span class="ph-ic">' + icon + "</span>" +
+      (badge ? '<span class="ph-badge">' + badge + "</span>" : "") + "</button>";
+  }
   function subHead(title, eyebrow) {
     return '<header class="ph-sub"><button class="q-icon" data-pv="hub" aria-label="Back to Practice">' + BACK + '</button><div><p class="q-eyebrow">' + eyebrow + "</p><h1>" + title + "</h1></div></header>";
   }
 
-  // A topic is its revision sessions (the same ticks as Today and Plan) and then its question rounds.
-  // Its next step is whichever unfinished item is due first; on a tie, revising comes before questions.
-  function topicState(t, when) {
-    var ids = SET_SESS[t.sid] || [], ticked = ids.filter(function (id) { return done[id]; }).length;
-    var mk = t.rounds.filter(function (b) { return S.marked[b.key]; }).length, nextS = null, nextR = null;
-    ids.forEach(function (id) { if (!done[id] && (!nextS || SESS[id].due < nextS)) nextS = SESS[id].due; });
-    t.rounds.forEach(function (b) { if (!nextR && !S.marked[b.key]) nextR = b; });
-    var step = nextS && (!nextR || nextS <= when[nextR.key]) ? {kind: "tick", date: nextS} : nextR ? {kind: "round", b: nextR, date: when[nextR.key]} : null;
-    return {ids: ids, ticked: ticked, mk: mk, nextR: nextR, step: step, started: ticked > 0 || mk > 0, all: ticked === ids.length && mk === t.rounds.length,
-      rp: ids.length ? Math.round(100 * ticked / ids.length) : 100};
-  }
-  // The module whose next step is due first, so the tab opens where she is.
-  function curModule() {
-    var when = whenOf(), best = null, bm = "GIL";
-    ["GIL","URO","ENI"].forEach(function (m) { topicsOf(m, when).forEach(function (t) { var s = topicState(t, when).step;
-      if (s && (!best || s.date < best)) { best = s.date; bm = m; } }); });
-    return bm;
-  }
-  function shortBtn(attrs, label, icon, badge) {
-    return '<button class="ph-sc" ' + attrs + ' aria-label="' + label + (badge ? ", " + badge : "") + '"><span class="ph-sci">' + icon + "</span>" +
-      (badge ? '<span class="ph-badge">' + (badge > 99 ? "99+" : badge) + "</span>" : "") + '<small aria-hidden="true">' + label + "</small></button>";
-  }
-
   function hubHtml() {
-    if (!PV.mod) PV.mod = curModule();
-    var n = streakDays(), h = '<header class="q-head"><div><p class="q-eyebrow">Practice</p><h1>Practice</h1></div><div class="ph-hr">' +
-      (n ? '<span class="ph-streak" aria-label="' + n + ' day streak"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-4-1-6 1-9.5z"/></svg>' + n + "</span>" : "") + GEAR + "</div></header>";
-    h += mixCard() + '<div class="ph-short">' +
-      shortBtn('data-pv="mist"', "Mistakes", '<svg viewBox="0 0 24 24" aria-hidden="true" class="bad"><path d="M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5"/></svg>', mistakes().length) +
-      shortBtn('data-pv="weak"', "Another pass", '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9M12 19V5M19 19v-7"/></svg>', weakSets().length) +
-      shortBtn('data-pv="exam"', "Exams", '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0zM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 12v4M8 20h8"/></svg>', 0) +
-      shortBtn('data-pv="all"', "All sets", '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>', 0) + "</div>";
-    return h + pathHtml(PV.mod);
+    var n = streakDays(), when = whenOf(), nx = upNext(), h = '<header class="q-head"><div><p class="q-eyebrow">Practice</p><h1>Practice</h1></div><div class="ph-hr">' +
+      (n ? '<span class="ph-streak" aria-label="' + n + ' day streak"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-4-1-6 1-9.5z"/></svg>' + n + "</span>" : "") + GEAR + "</div></header>" + mixCard();
+    if (nx) { var b = nx.b, i = blockInfo(b), unit = b.kind === "ospe" ? "stations" : "questions";
+      h += '<section class="ph-hero mod-' + b.module + '"><div class="ph-hl"><span class="q-chip">' + (MOD[b.module] && b.module !== "ALL" ? b.module : "Mixed") + '</span><span class="ph-when' + (nx.date < today() ? " bad" : "") + '">' + whenLabel(nx.date) + "</span></div>" +
+        '<p class="q-eyebrow">Up next</p><h2>' + esc(b.title) + "</h2><p class=\"ph-meta\">" + esc(b.label) + " · " + i.n + " " + unit + " · about " + estMin(b) + " min</p>" +
+        '<button class="q-btn pri ph-go" data-open="' + b.key + '">' + (i.ans ? "Continue · " + i.ans + "/" + i.n : "Start") + "</button></section>";
+    } else h += '<section class="ph-hero mod-ALL"><p class="q-eyebrow">Up next</p><h2>Every set is marked</h2><p class="ph-meta">Go back over the ones that need another pass, below.</p></section>';
+
+    var weak = weakSets().length;
+    var mc = mistakes().length;
+    h += '<h2 class="ph-h">Fix weak spots</h2>' + hubRow('data-pv="mist"', "Mistakes", mc ? "Wrong answers stay here until you get them right" : "Questions you get wrong will appear here",
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5"/></svg>', "ALL", mc ? (mc > 99 ? "99+" : String(mc)) : "") + hubRow('data-pv="weak"', "Needs another pass", weak ? "Sets you scored under 60%, lowest first" : "Sets you score under 60% will appear here",
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9M12 19V5M19 19v-7"/></svg>', "ALL", weak ? String(weak) : "");
+
+    h += '<h2 class="ph-h">Your modules</h2><div class="ph-mods">';
+    ["GIL","URO","ENI"].forEach(function (m) { var ts = topicsOf(m, when), rounds = 0, mk = 0, started = 0;
+      ts.forEach(function (t) { var any = false; t.rounds.forEach(function (b) { rounds++; if (S.marked[b.key]) { mk++; any = true; } }); if (any) started++; });
+      h += '<button class="ph-mod mod-' + m + '" data-pv="mod" data-pm="' + m + '" aria-label="' + MOD[m] + ", " + started + " of " + ts.length + ' topics started"><span class="ph-ring" style="--p:' + (rounds ? Math.round(100 * mk / rounds) : 0) + '"><span>' + m + "</span></span><small>" + started + " of " + ts.length + "</small></button>"; });
+    h += "</div>";
+
+    var papers = []; DATA.days.forEach(function (d) { d.blocks.forEach(function (b) { if (b.kind !== "set") papers.push([b, d.date]); }); });
+    var pdone = papers.filter(function (p) { return S.marked[p[0].key]; }).length;
+    h += '<h2 class="ph-h">Exam practice</h2>' + hubRow('data-pv="exam"', "Papers, mocks and OSPE", papers.length + " in all · " + (pdone ? pdone + " marked" : papers.length ? "first on " + fmt(papers[0][1]).d + " " + fmt(papers[0][1]).m : ""),
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0zM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 12v4M8 20h8"/></svg>', "OSPE", "");
+    h += hubRow('data-pv="all"', "All question sets", "Every set on one page, as before", MORE, "ALL", "");
+    return h;
   }
 
-  function pathHtml(m) {
-    var when = whenOf(), ts = topicsOf(m, when), sts = ts.map(function (t) { return topicState(t, when); }), cur = -1, started = 0, wk = null;
-    sts.forEach(function (s, k) { if (s.started) started++; if (s.step && (cur < 0 || s.step.date < sts[cur].step.date)) cur = k; });
-    var h = '<div class="ph-stick"><div class="ph-pills" role="group" aria-label="Module">' +
-      ["GIL","URO","ENI"].map(function (x) { return '<button class="ph-pill mod-' + x + '" data-pm="' + x + '" aria-pressed="' + (x === m) + '">' + x + "</button>"; }).join("") + "</div>" +
-      '<div class="ph-banner mod-' + m + '"><p class="q-eyebrow">' + started + " of " + ts.length + " topics started</p><h2>" + MOD[m] + "</h2></div></div>";
+  function modHtml(m) {
+    var when = whenOf(), ts = topicsOf(m, when), nx = upNext(m), cur = nx ? nx.b.key.split("-R")[0] : null, started = 0, wk = null;
+    ts.forEach(function (t) { if (t.rounds.some(function (b) { return S.marked[b.key]; })) started++; });
+    var h = '<header class="ph-top"><button class="q-icon" data-pv="hub" aria-label="Back to Practice">' + BACK + '</button><div class="ph-pills" role="group" aria-label="Module">' +
+      ["GIL","URO","ENI"].map(function (x) { return '<button class="ph-pill mod-' + x + '" data-pv="mod" data-pm="' + x + '" aria-pressed="' + (x === m) + '">' + x + "</button>"; }).join("") + "</div></header>" +
+      '<div class="ph-banner mod-' + m + '"><p class="q-eyebrow">' + started + " of " + ts.length + " topics started</p><h1>" + MOD[m] + "</h1></div>";
     var XS = [0, -56, -84, -56, 0, 56, 84, 56];
     h += '<div class="ph-path mod-' + m + '">';
     ts.forEach(function (t, k) {
       var first = when[t.rounds[0].key], x = new Date(first + "T12:00:00"), mon = addDays(first, -((x.getDay() + 6) % 7));
       if (mon !== wk) { wk = mon; var f = fmt(mon); h += '<div class="ph-wk">Week of ' + f.d + " " + f.m + "</div>"; }
-      var s = sts[k], isCur = k === cur, off = XS[k % XS.length], name = DATA.sets[t.sid].name;
-      var bub = !isCur ? "" : s.step.kind === "tick" ? (s.ids.length - s.ticked) + " TO TICK" : blockInfo(s.step.b).ans ? "CONTINUE" : "START";
+      var mk = t.rounds.filter(function (b) { return S.marked[b.key]; }).length, all = mk === t.rounds.length, isCur = t.sid === cur, off = XS[k % XS.length];
       var stars = t.rounds.map(function (b) { return '<i class="' + (S.marked[b.key] ? "on" : "") + '">' + STAR + "</i>"; }).join("");
-      h += '<div class="ph-step' + (isCur ? " cur" : "") + '" style="--x:' + off + 'px"><span class="ph-ringo" style="--rp:' + s.rp + '" aria-hidden="true"></span>' +
-        '<button class="ph-node' + (s.started ? " s-on" : "") + (isCur ? " cur" : "") + '" data-topic="' + t.sid + '" aria-label="' + esc(name) + ", " + s.ticked + " of " + s.ids.length + " sessions ticked, " + s.mk + " of " + t.rounds.length + ' rounds marked">' +
-        (bub ? '<span class="ph-bub">' + bub + "</span>" : "") + (s.all ? TICK : STAR) + '</button><span class="ph-stars">' + stars + "</span>" +
-        '<span class="ph-name ' + (off > 0 ? "l" : "r") + '">' + esc(name) + "</span></div>";
+      h += '<div class="ph-step' + (isCur ? " cur" : "") + '" style="--x:' + off + 'px"><button class="ph-node' + (mk ? " s-on" : "") + (isCur ? " cur" : "") + '" data-topic="' + t.sid + '" aria-label="' + esc(DATA.sets[t.sid].name) + ", " + mk + " of " + t.rounds.length + ' rounds marked">' +
+        (isCur ? '<span class="ph-bub">' + (blockInfo(nx.b).ans ? "CONTINUE" : "START") + "</span>" : "") + (all ? TICK : STAR) + '</button><span class="ph-stars">' + stars + "</span>" +
+        '<span class="ph-name ' + (off > 0 ? "l" : "r") + '">' + esc(DATA.sets[t.sid].name) + "</span></div>";
     });
     return h + "</div>";
   }
@@ -640,42 +643,27 @@
     return h + '<div class="q-cards">' + w.map(function (p) { return '<div class="q-tcard mod-' + p[0].module + '"><h3>' + esc(p[0].title) + "</h3>" + setButton(p[0]) + "</div>"; }).join("") + "</div>";
   }
 
-  // Tapping a circle: the topic's steps in order. Revise ticks the same sessions as Today and Plan;
-  // each round opens its set as before; the big button does the next round.
-  function openTopic(sid, keepY) {
-    var when = whenOf(), s0 = DATA.sets[sid], ts = topicsOf(s0.module, when), t = null, pos = 0;
-    ts.forEach(function (x, k) { if (x.sid === sid) { t = x; pos = k + 1; } });
-    if (!t) return;
-    var st = topicState(t, when), left = st.ids.length - st.ticked, f = fmt(when[t.rounds[0].key]);
-    var od = st.ids.filter(function (id) { return !done[id] && SESS[id].due < today(); }).length;
-    var h = '<p class="q-eyebrow">' + s0.module + " · Topic " + pos + " of " + ts.length + " · " + f.w + " " + f.d + " " + f.m + "</p><h3>" + esc(s0.name) + "</h3>";
-    if (st.ids.length) h += '<details class="ph-stepc"' + (left ? " open" : "") + '><summary><span class="ph-sn">1</span><b>Revise</b><span class="ph-sm' + (od ? " bad" : "") + '">' +
-      st.ticked + " of " + st.ids.length + " ticked" + (od ? " · " + od + " overdue" : "") + '</span></summary><div class="q-bar"><i style="width:' + st.rp + '%"></i></div><div class="q-list">' +
-      st.ids.map(function (id) { return sessRow(id, true); }).join("") + "</div></details>";
-    t.rounds.forEach(function (b, k) {
-      h += '<div class="ph-stepc"><div class="ph-sh"><span class="ph-sn">' + (k + (st.ids.length ? 2 : 1)) + "</span><b>" + esc(b.label) + '</b><span class="ph-sm">' + whenLabel(when[b.key]) +
-        (b === st.nextR ? ' <span class="ph-tag">Up next</span>' : "") + "</span></div>" + setButton(b) + "</div>"; });
-    var main = "";
-    if (st.nextR) { var i = blockInfo(st.nextR), lab = st.nextR.label.toLowerCase();
-      main = '<button class="q-btn pri ph-go" data-open="' + st.nextR.key + '">' + (i.ans ? "Continue " + lab + " · " + i.ans + "/" + i.n : "Start " + lab) + "</button>"; }
-    h += '<div class="q-row ph-foot"><button class="q-btn wide" data-close>Close</button>' + main + "</div>";
-    var sh = sheet(h, s0.module), box = sh.querySelector(".q-sbox");
-    if (keepY) box.scrollTop = keepY;
+  // Tapping a topic on the path: every round of it, each opening the set as before.
+  function openTopic(sid) {
+    var when = whenOf(), s = DATA.sets[sid], ts = topicsOf(s.module, when), rs = roundsOf(sid, when), pos = 0, nextKey = null;
+    ts.forEach(function (t, k) { if (t.sid === sid) pos = k + 1; });
+    rs.forEach(function (b) { if (!nextKey && !S.marked[b.key]) nextKey = b.key; });
+    var h = '<p class="q-eyebrow">' + s.module + " · Topic " + pos + " of " + ts.length + "</p><h3>" + esc(s.name) + "</h3>";
+    rs.forEach(function (b) { h += '<p class="ph-rd"><b>' + esc(b.label) + "</b> · " + whenLabel(when[b.key]) + (b.key === nextKey ? ' <span class="ph-tag">Up next</span>' : "") + "</p>" + setButton(b); });
+    h += '<div class="q-row"><button class="q-btn wide" data-close>Close</button></div>';
+    var sh = sheet(h, s.module);
     sh.querySelector("[data-close]").onclick = function () { sh.hidden = true; };
     [].forEach.call(sh.querySelectorAll("[data-open]"), function (x) { x.onclick = function () { sh.hidden = true; openBlock(x.dataset.open); }; });
-    sh.onchange = function (e) { var x = e.target; if (!x.matches || !x.matches("[data-tick]")) return;
-      e.stopPropagation(); tick(x.dataset.tick, x.checked); refresh(); openTopic(sid, box.scrollTop); };
   }
 
   function renderPractice() {
     var el = $("tab-practice");
     if (classicPractice()) { el.innerHTML = '<div class="qwrap">' + allSetsHtml() + "</div></div>"; return; }
-    var v = PV.v, body = v === "exam" ? examHtml() : v === "weak" ? weakHtml() : v === "mist" ? mistHtml()
+    var v = PV.v, body = v === "mod" ? modHtml(PV.mod) : v === "exam" ? examHtml() : v === "weak" ? weakHtml() : v === "mist" ? mistHtml()
       : v === "all" ? allSetsHtml(subHead("All question sets", "Practice")) : hubHtml();
     el.innerHTML = '<div class="qwrap ph">' + body + "</div>";
   }
-  function showPractice(v, mod) { PV = {v: v, mod: PV.mod}; renderPractice(); window.scrollTo(0, 0); }
-  function showModule(m) { var y = window.scrollY; PV = {v: "hub", mod: m}; renderPractice(); window.scrollTo(0, y); }
+  function showPractice(v, mod) { PV = {v: v, mod: mod || PV.mod}; renderPractice(); window.scrollTo(0, 0); }
 
   // ---------- daily mix + mistakes ----------
   // A review session keeps its answers in S.rv[kind].a and its outcomes in S.mw / S.mr (last wrong /
@@ -762,16 +750,16 @@
   }
 
   function mixCard() {
-    var pool = mixPool().length, rv = rvLive("mix"), h = '<section class="ph-mix mod-ALL"><div class="ph-mt"><span class="ph-mey">Today’s review</span>';
-    if (!pool) return h + "<b>Your daily mix starts soon</b><small>Mark your first question set and you get 10 quick questions a day, with your mistakes mixed in.</small></div></section>";
+    var pool = mixPool().length, rv = rvLive("mix"), h = '<section class="ph-hero ph-mix mod-ALL"><div class="ph-hl"><span class="q-chip">Today’s review</span><span class="ph-when">All modules</span></div>';
+    if (!pool) return h + "<h2>Your daily mix starts soon</h2><p class=\"ph-meta\">Mark your first question set and you get 10 quick questions a day from sets you’ve done, with your mistakes mixed in.</p></section>";
     if (rv && rv.done) { var st = rvStats(rv);
-      return h + "<b>Done for today</b><small>" + st.ok + " of " + st.n + " right" + (rv.cleared ? " · " + rv.cleared + " mistakes cleared" : "") + "</small></div>" +
-        '<div class="ph-mbs"><button class="ph-mb" data-rvres="mix">Answers</button><button class="ph-mb pri" data-rv="mix" data-fresh="1" aria-label="Another round">Again</button></div></section>'; }
-    if (rv) { var s2 = rvStats(rv); return h + "<b>Daily mix · " + s2.n + " questions</b><small>" + s2.ans + " of " + s2.n + " answered</small></div>" +
-      '<button class="ph-mb pri" data-rv="mix">Continue</button></section>'; }
+      return h + '<h2><span class="ph-done" aria-hidden="true">' + TICK + "</span>Done for today</h2><p class=\"ph-meta\">" + st.ok + " of " + st.n + " right" + (rv.cleared ? " · " + rv.cleared + " mistakes cleared" : "") + "</p>" +
+        '<div class="ph-btns"><button class="q-btn ph-go2" data-rvres="mix">See answers</button><button class="q-btn pri ph-go" data-rv="mix" data-fresh="1">Another round</button></div></section>'; }
+    if (rv) { var s2 = rvStats(rv); return h + "<h2>Daily mix</h2><p class=\"ph-meta\">" + s2.n + " questions from sets you’ve done</p>" +
+      '<button class="q-btn pri ph-go" data-rv="mix">Continue · ' + s2.ans + "/" + s2.n + "</button></section>"; }
     var n = Math.min(MIX_N, pool), mis = Math.min(MIX_MISTAKES, mistakes().length);
-    return h + "<b>Daily mix · " + n + " questions</b><small>" + (mis ? "Includes " + mis + " of your mistakes · " : "") + "about " + Math.max(2, Math.round(n / 2)) + " min</small></div>" +
-      '<button class="ph-mb pri" data-rv="mix">Start</button></section>';
+    return h + "<h2>Daily mix</h2><p class=\"ph-meta\">" + n + " quick questions from sets you’ve done" + (mis ? ", including " + mis + " of your mistakes" : "") + " · about " + Math.max(2, Math.round(n / 2)) + " min</p>" +
+      '<button class="q-btn pri ph-go" data-rv="mix">Start</button></section>';
   }
   function mistHtml() {
     var ms = mistakes(), rv = rvLive("mist"), h = subHead("Mistakes", "Fix weak spots");
@@ -830,7 +818,7 @@
     return '<div class="q-notes"><ul>' +
       "<li><b>Today</b> lists the sessions due today with that topic's questions underneath. Tick each session when you've revised it.</li>" +
       "<li>A session turns <span class=\"warn\">amber</span> when you've marked its questions but haven't ticked it, and <span class=\"bad\">red</span> once its day has passed unticked. Red ones collect under Overdue at the top of Today.</li>" +
-      "<li><b>Practice</b> shows each module as a path of topics in plan order, opening where you are. The ring round a circle fills as you tick that topic's sessions, the stars underneath are its question rounds, and a tick means everything is done. Tap a circle to tick its sessions (the same ticks as Today and Plan) and start its rounds. <b>All sets</b> is the full list, and <b>Classic Practice list</b> (Settings → Practice) makes that list the whole tab again.</li>" +
+      "<li><b>Practice</b> opens on your next set. Each module is a path of topics in plan order: a filled circle has a marked round, a tick means every round is marked, and the stars underneath are its rounds. Tap a circle to see and start its rounds. <b>All question sets</b> at the bottom is the full list, and <b>Classic Practice list</b> (Settings → Practice) makes that list the whole tab again.</li>" +
       "<li><b>Daily mix</b> is a short quiz each day from sets you've already marked, with up to 4 of your mistakes mixed in and the topics you were tested on longest ago first. <b>Mistakes</b> lists every question you got wrong in a set or a review; get it right in a round and it leaves the list. Neither changes your set scores, your plan or your ticks; they only count towards your streak.</li>" +
       "<li>Questions come one at a time. Nothing is marked until you press <b>Finish and mark</b> at the end of the set.</li>" +
       "<li><b>Think first</b> (Settings → Practice) hides the options on single best answer questions until you tap Show options. Answering from memory first is a better test, and the options can't hint at the answer.</li>" +
@@ -1140,8 +1128,7 @@
     var root = e.target.closest(".qb"); if (!root || root.id === "q-ov" || root.id === "q-sheet") return;
     var x;
     if ((x = e.target.closest("[data-open]"))) { openBlock(x.dataset.open); return; }
-    if ((x = e.target.closest("[data-pv]"))) { showPractice(x.dataset.pv); return; }
-    if ((x = e.target.closest("[data-pm]"))) { showModule(x.dataset.pm); return; }
+    if ((x = e.target.closest("[data-pv]"))) { showPractice(x.dataset.pv, x.dataset.pm); return; }
     if ((x = e.target.closest("[data-topic]"))) { openTopic(x.dataset.topic); return; }
     if ((x = e.target.closest("[data-rv]"))) { startReview(x.dataset.rv, x.dataset.fresh === "1"); return; }
     if ((x = e.target.closest("[data-rvres]"))) { openReviewResults(x.dataset.rvres); return; }
