@@ -518,8 +518,11 @@
   }
 
   // ---------- PRACTICE ----------
-  function renderPractice() {
+  // Every question set on one page: the original Practice tab. It is now "All question sets" in the
+  // hub, and the whole tab again when Classic Practice list is on in Settings. head replaces its header.
+  function allSetsHtml(head) {
     var byMod = {ENI:[], GIL:[], URO:[]}, h = '<header class="q-head"><div><p class="q-eyebrow">Practice</p><h1>Every question set</h1></div><button class="q-icon" data-settings aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg></button></header>';
+    if (head != null) h = head;
     Object.keys(DATA.sets).forEach(function (sid) { var s = DATA.sets[sid]; byMod[s.module].push([sid, s]); });
     ["GIL","URO","ENI"].forEach(function (m) {
       h += '<div class="q-mh mod-' + m + '"><h2>' + MOD[m] + '</h2><span class="q-chip">' + m + '</span></div><div class="q-cards">';
@@ -532,8 +535,129 @@
     h += '<div class="q-mh mod-ALL"><h2>Practice papers and OSPE</h2></div><div class="q-cards">';
     DATA.days.forEach(function (d) { d.blocks.forEach(function (b) { if (b.kind === "set") return; var f = fmt(d.date), i = blockInfo(b);
       h += '<div class="q-tcard mod-' + b.module + '"><h3>' + esc(b.title) + '</h3><div class="q-lk"><button class="q-btn sm' + (i.marked ? " ok" : "") + '" data-open="' + b.key + '">' + f.d + " " + f.m + " · " + b.questions.length + " " + (b.kind === "ospe" ? "stations" : "questions") + " · " + (i.marked ? (i.pct != null ? i.pct + "%" : "marked") : i.ans + "/" + i.n) + "</button></div></div>"; }); });
-    $("tab-practice").innerHTML = '<div class="qwrap">' + h + "</div></div>";
+    return h;
   }
+  // Practice hub: one next step, then the modules as coloured paths, then papers and the full list.
+  // Read-only: it shows the saved answers and marks and opens sets with openBlock(), nothing else.
+  var CLASSIC = "nicole-revision-classic";
+  function classicPractice() { try { return localStorage.getItem(CLASSIC) === "1"; } catch (e) { return false; } }
+  function setClassicPractice(on) { try { if (on) localStorage.setItem(CLASSIC, "1"); else localStorage.removeItem(CLASSIC); } catch (e) {} }
+  var GEAR = '<button class="q-icon" data-settings aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg></button>';
+  var STAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg>';
+  var TICK = '<svg viewBox="0 0 24 24" aria-hidden="true" class="ck"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  var BACK = '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>';
+  var MORE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+  var ROUND = ["", "First pass", "Consolidation", "Rapid recall"];
+  var PV = {v: "hub", mod: "GIL"}; // which hub screen is showing
+
+  // Where each block sits in the plan now, after any moves she has made.
+  function whenOf() { var w = {}; DATA.days.forEach(function (d) { d.blocks.forEach(function (b) { w[b.key] = d.date; }); }); return w; }
+  function roundsOf(sid, when) { return DATA.sets[sid].rounds.map(function (r) { return BLOCKS[sid + "-R" + r[1]]; }).filter(Boolean)
+    .sort(function (a, b) { return when[a.key] < when[b.key] ? -1 : when[a.key] > when[b.key] ? 1 : 0; }); }
+  function topicsOf(m, when) {
+    return Object.keys(DATA.sets).filter(function (sid) { return DATA.sets[sid].module === m; }).map(function (sid) { return {sid: sid, rounds: roundsOf(sid, when)}; })
+      .filter(function (t) { return t.rounds.length; })
+      .sort(function (a, b) { var x = when[a.rounds[0].key], y = when[b.rounds[0].key]; return x < y ? -1 : x > y ? 1 : (a.sid < b.sid ? -1 : 1); });
+  }
+  // The earliest set not yet marked, in plan order; first passes go before the rest of a day, as on Today.
+  function upNext(m) {
+    for (var i = 0; i < DATA.days.length; i++) { var d = DATA.days[i];
+      var order = d.blocks.filter(function (b) { return b.kind === "set" && b.label === "First pass"; });
+      order = order.concat(d.blocks.filter(function (b) { return order.indexOf(b) < 0; }));
+      for (var k = 0; k < order.length; k++) { var b = order[k]; if (m && b.module !== m) continue; if (!S.marked[b.key]) return {b: b, date: d.date}; } }
+    return null;
+  }
+  function whenLabel(iso) { var t = today(), f = fmt(iso); return iso === t ? "Today" : (iso < t ? "Overdue · " : "") + f.w + " " + f.d + " " + f.m; }
+  function weakSets() { return Object.keys(BLOCKS).map(function (k) { return [BLOCKS[k], blockInfo(BLOCKS[k])]; })
+    .filter(function (p) { return p[1].marked && p[1].pct != null && p[1].pct < 60; }).sort(function (a, b) { return a[1].pct - b[1].pct; }); }
+  function hubRow(attrs, title, sub, icon, mod, badge) {
+    return '<button class="ph-row mod-' + mod + '" ' + attrs + '><span class="ph-rt"><b>' + title + "</b><small>" + sub + '</small></span><span class="ph-ic">' + icon + "</span>" +
+      (badge ? '<span class="ph-badge">' + badge + "</span>" : "") + "</button>";
+  }
+  function subHead(title, eyebrow) {
+    return '<header class="ph-sub"><button class="q-icon" data-pv="hub" aria-label="Back to Practice">' + BACK + '</button><div><p class="q-eyebrow">' + eyebrow + "</p><h1>" + title + "</h1></div></header>";
+  }
+
+  function hubHtml() {
+    var n = streakDays(), when = whenOf(), nx = upNext(), h = '<header class="q-head"><div><p class="q-eyebrow">Practice</p><h1>Practice</h1></div><div class="ph-hr">' +
+      (n ? '<span class="ph-streak" aria-label="' + n + ' day streak"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-4-1-6 1-9.5z"/></svg>' + n + "</span>" : "") + GEAR + "</div></header>";
+    if (nx) { var b = nx.b, i = blockInfo(b), unit = b.kind === "ospe" ? "stations" : "questions";
+      h += '<section class="ph-hero mod-' + b.module + '"><div class="ph-hl"><span class="q-chip">' + (MOD[b.module] && b.module !== "ALL" ? b.module : "Mixed") + '</span><span class="ph-when' + (nx.date < today() ? " bad" : "") + '">' + whenLabel(nx.date) + "</span></div>" +
+        '<p class="q-eyebrow">Up next</p><h2>' + esc(b.title) + "</h2><p class=\"ph-meta\">" + esc(b.label) + " · " + i.n + " " + unit + " · about " + estMin(b) + " min</p>" +
+        '<button class="q-btn pri ph-go" data-open="' + b.key + '">' + (i.ans ? "Continue · " + i.ans + "/" + i.n : "Start") + "</button></section>";
+    } else h += '<section class="ph-hero mod-ALL"><p class="q-eyebrow">Up next</p><h2>Every set is marked</h2><p class="ph-meta">Go back over the ones that need another pass, below.</p></section>';
+
+    var weak = weakSets().length;
+    h += '<h2 class="ph-h">Fix weak spots</h2>' + hubRow('data-pv="weak"', "Needs another pass", weak ? "Sets you scored under 60%, lowest first" : "Sets you score under 60% will appear here",
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9M12 19V5M19 19v-7"/></svg>', "ALL", weak ? String(weak) : "");
+
+    h += '<h2 class="ph-h">Your modules</h2><div class="ph-mods">';
+    ["GIL","URO","ENI"].forEach(function (m) { var ts = topicsOf(m, when), rounds = 0, mk = 0, started = 0;
+      ts.forEach(function (t) { var any = false; t.rounds.forEach(function (b) { rounds++; if (S.marked[b.key]) { mk++; any = true; } }); if (any) started++; });
+      h += '<button class="ph-mod mod-' + m + '" data-pv="mod" data-pm="' + m + '" aria-label="' + MOD[m] + ", " + started + " of " + ts.length + ' topics started"><span class="ph-ring" style="--p:' + (rounds ? Math.round(100 * mk / rounds) : 0) + '"><span>' + m + "</span></span><small>" + started + " of " + ts.length + "</small></button>"; });
+    h += "</div>";
+
+    var papers = []; DATA.days.forEach(function (d) { d.blocks.forEach(function (b) { if (b.kind !== "set") papers.push([b, d.date]); }); });
+    var pdone = papers.filter(function (p) { return S.marked[p[0].key]; }).length;
+    h += '<h2 class="ph-h">Exam practice</h2>' + hubRow('data-pv="exam"', "Papers, mocks and OSPE", papers.length + " in all · " + (pdone ? pdone + " marked" : papers.length ? "first on " + fmt(papers[0][1]).d + " " + fmt(papers[0][1]).m : ""),
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0zM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 12v4M8 20h8"/></svg>', "OSPE", "");
+    h += hubRow('data-pv="all"', "All question sets", "Every set on one page, as before", MORE, "ALL", "");
+    return h;
+  }
+
+  function modHtml(m) {
+    var when = whenOf(), ts = topicsOf(m, when), nx = upNext(m), cur = nx ? nx.b.key.split("-R")[0] : null, started = 0, wk = null;
+    ts.forEach(function (t) { if (t.rounds.some(function (b) { return S.marked[b.key]; })) started++; });
+    var h = '<header class="ph-top"><button class="q-icon" data-pv="hub" aria-label="Back to Practice">' + BACK + '</button><div class="ph-pills" role="group" aria-label="Module">' +
+      ["GIL","URO","ENI"].map(function (x) { return '<button class="ph-pill mod-' + x + '" data-pv="mod" data-pm="' + x + '" aria-pressed="' + (x === m) + '">' + x + "</button>"; }).join("") + "</div></header>" +
+      '<div class="ph-banner mod-' + m + '"><p class="q-eyebrow">' + started + " of " + ts.length + " topics started</p><h1>" + MOD[m] + "</h1></div>";
+    var XS = [0, -56, -84, -56, 0, 56, 84, 56];
+    h += '<div class="ph-path mod-' + m + '">';
+    ts.forEach(function (t, k) {
+      var first = when[t.rounds[0].key], x = new Date(first + "T12:00:00"), mon = addDays(first, -((x.getDay() + 6) % 7));
+      if (mon !== wk) { wk = mon; var f = fmt(mon); h += '<div class="ph-wk">Week of ' + f.d + " " + f.m + "</div>"; }
+      var mk = t.rounds.filter(function (b) { return S.marked[b.key]; }).length, all = mk === t.rounds.length, isCur = t.sid === cur, off = XS[k % XS.length];
+      var stars = t.rounds.map(function (b) { return '<i class="' + (S.marked[b.key] ? "on" : "") + '">' + STAR + "</i>"; }).join("");
+      h += '<div class="ph-step' + (isCur ? " cur" : "") + '" style="--x:' + off + 'px"><button class="ph-node' + (mk ? " s-on" : "") + (isCur ? " cur" : "") + '" data-topic="' + t.sid + '" aria-label="' + esc(DATA.sets[t.sid].name) + ", " + mk + " of " + t.rounds.length + ' rounds marked">' +
+        (isCur ? '<span class="ph-bub">' + (blockInfo(nx.b).ans ? "CONTINUE" : "START") + "</span>" : "") + (all ? TICK : STAR) + '</button><span class="ph-stars">' + stars + "</span>" +
+        '<span class="ph-name ' + (off > 0 ? "l" : "r") + '">' + esc(DATA.sets[t.sid].name) + "</span></div>";
+    });
+    return h + "</div>";
+  }
+
+  function examHtml() {
+    var h = subHead("Papers, mocks and OSPE", "Exam practice") + '<div class="q-cards">';
+    DATA.days.forEach(function (d) { d.blocks.forEach(function (b) { if (b.kind === "set") return;
+      h += '<div class="q-tcard mod-' + b.module + '"><h3>' + esc(b.title) + '</h3><p class="ph-date">' + whenLabel(d.date) + "</p>" + setButton(b) + "</div>"; }); });
+    return h + "</div>";
+  }
+  function weakHtml() {
+    var w = weakSets(), h = subHead("Needs another pass", "Fix weak spots");
+    if (!w.length) return h + '<div class="q-empty">Sets you score under 60% appear here, lowest first.</div>';
+    return h + '<div class="q-cards">' + w.map(function (p) { return '<div class="q-tcard mod-' + p[0].module + '"><h3>' + esc(p[0].title) + "</h3>" + setButton(p[0]) + "</div>"; }).join("") + "</div>";
+  }
+
+  // Tapping a topic on the path: every round of it, each opening the set as before.
+  function openTopic(sid) {
+    var when = whenOf(), s = DATA.sets[sid], ts = topicsOf(s.module, when), rs = roundsOf(sid, when), pos = 0, nextKey = null;
+    ts.forEach(function (t, k) { if (t.sid === sid) pos = k + 1; });
+    rs.forEach(function (b) { if (!nextKey && !S.marked[b.key]) nextKey = b.key; });
+    var h = '<p class="q-eyebrow">' + s.module + " · Topic " + pos + " of " + ts.length + "</p><h3>" + esc(s.name) + "</h3>";
+    rs.forEach(function (b) { h += '<p class="ph-rd"><b>' + esc(b.label) + "</b> · " + whenLabel(when[b.key]) + (b.key === nextKey ? ' <span class="ph-tag">Up next</span>' : "") + "</p>" + setButton(b); });
+    h += '<div class="q-row"><button class="q-btn wide" data-close>Close</button></div>';
+    var sh = sheet(h, s.module);
+    sh.querySelector("[data-close]").onclick = function () { sh.hidden = true; };
+    [].forEach.call(sh.querySelectorAll("[data-open]"), function (x) { x.onclick = function () { sh.hidden = true; openBlock(x.dataset.open); }; });
+  }
+
+  function renderPractice() {
+    var el = $("tab-practice");
+    if (classicPractice()) { el.innerHTML = '<div class="qwrap">' + allSetsHtml() + "</div></div>"; return; }
+    var v = PV.v, body = v === "mod" ? modHtml(PV.mod) : v === "exam" ? examHtml() : v === "weak" ? weakHtml()
+      : v === "all" ? allSetsHtml(subHead("All question sets", "Practice")) : hubHtml();
+    el.innerHTML = '<div class="qwrap ph">' + body + "</div>";
+  }
+  function showPractice(v, mod) { PV = {v: v, mod: mod || PV.mod}; renderPractice(); window.scrollTo(0, 0); }
 
   // ---------- PROGRESS ----------
   function renderProgress() {
@@ -579,6 +703,7 @@
     return '<div class="q-notes"><ul>' +
       "<li><b>Today</b> lists the sessions due today with that topic's questions underneath. Tick each session when you've revised it.</li>" +
       "<li>A session turns <span class=\"warn\">amber</span> when you've marked its questions but haven't ticked it, and <span class=\"bad\">red</span> once its day has passed unticked. Red ones collect under Overdue at the top of Today.</li>" +
+      "<li><b>Practice</b> opens on your next set. Each module is a path of topics in plan order: a filled circle has a marked round, a tick means every round is marked, and the stars underneath are its rounds. Tap a circle to see and start its rounds. <b>All question sets</b> at the bottom is the full list, and <b>Classic Practice list</b> (Settings → Practice) makes that list the whole tab again.</li>" +
       "<li>Questions come one at a time. Nothing is marked until you press <b>Finish and mark</b> at the end of the set.</li>" +
       "<li><b>Think first</b> (Settings → Practice) hides the options on single best answer questions until you tap Show options. Answering from memory first is a better test, and the options can't hint at the answer.</li>" +
       "<li>Single best answer, extended matching and fill in the blank mark themselves. For short answers and OSPE stations you mark yourself against the mark scheme.</li>" +
@@ -657,7 +782,8 @@
       '<div class="q-seg" role="radiogroup" aria-label="Theme">' + [["light","Light"],["dark","Dark"],["system","Match phone"]].map(function (o) { return '<button role="radio" aria-checked="' + (mode === o[0]) + '" data-mode="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>" +
       '<div class="q-srow"><span><b>Colour</b><small>' + ACCENTS.filter(function (o) { return o[0] === accent; })[0][1] + '</small></span></div>' +
       '<div class="q-swatches" role="radiogroup" aria-label="Colour">' + ACCENTS.map(function (o) { return '<button role="radio" aria-checked="' + (accent === o[0]) + '" aria-label="' + o[1] + '" data-accent="' + o[0] + '" style="--sw:' + o[2] + '"><span></span>' + o[1] + "</button>"; }).join("") + "</div></div>" +
-      '<p class="q-slabel">Practice</p><div class="q-sgroup"><label class="q-row-t"><span><b>Think first</b><small>Hide the options on single best answer questions until you tap Show options, so you answer from memory</small></span><input type="checkbox" class="q-switch on-accent" data-think' + (thinkFirst() ? " checked" : "") + "></label></div>" +
+      '<p class="q-slabel">Practice</p><div class="q-sgroup"><label class="q-row-t"><span><b>Think first</b><small>Hide the options on single best answer questions until you tap Show options, so you answer from memory</small></span><input type="checkbox" class="q-switch on-accent" data-think' + (thinkFirst() ? " checked" : "") + "></label>" +
+      '<label class="q-row-t"><span><b>Classic Practice list</b><small>Show every question set on one page in the Practice tab, as it was before the hub</small></span><input type="checkbox" class="q-switch on-accent" data-classic' + (classicPractice() ? " checked" : "") + "></label></div>" +
       '<p class="q-slabel">Your plan</p><div class="q-sgroup">' + planGroupHtml(section === "plan") + "</div>" +
       '<p class="q-slabel">Help</p><div class="q-sgroup"><details class="q-howto"' + (section === "help" ? " open" : "") + '><summary><span><b>How it works</b><small>Ticking, colours, questions and marking</small></span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></summary>' + howItWorksHtml() + "</details></div>" +
       '<p class="q-slabel">Your data</p><div class="q-sgroup"><button class="q-srow q-link" data-bk="export"><span><b>Save a backup</b><small>Ticks, flags and question answers in one file</small></span><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></button>' +
@@ -672,6 +798,7 @@
       [].forEach.call(ov.querySelectorAll("[data-accent]"), function (x) { x.setAttribute("aria-checked", x === b); });
       b.parentNode.previousElementSibling.querySelector("small").textContent = b.getAttribute("aria-label"); }; });
     ov.querySelector("[data-think]").onchange = function () { setThinkFirst(this.checked); };
+    ov.querySelector("[data-classic]").onchange = function () { setClassicPractice(this.checked); PV.v = "hub"; };
     [].forEach.call(ov.querySelectorAll("[data-mode]"), function (b) { b.onclick = function () { setTheme(b.dataset.mode); [].forEach.call(ov.querySelectorAll("[data-mode]"), function (x) { x.setAttribute("aria-checked", x === b); }); }; });
     [].forEach.call(ov.querySelectorAll("[data-rs]"), function (x) { x.onchange = function () { RS[x.dataset.rs] = x.checked; updGo(); }; });
     [].forEach.call(ov.querySelectorAll("[data-rm]"), function (x) { x.onchange = function () { RS.mods[x.dataset.rm] = x.checked; updGo(); }; });
@@ -873,12 +1000,15 @@
     refresh(); window.scrollTo(0, 0);
     try { sessionStorage.setItem("nicole-tab", t); } catch (e) {}
   }
-  [].forEach.call(document.querySelectorAll("[data-tab]"), function (b) { b.onclick = function () { if (b.dataset.tab === curTab && curTab === "today") renderToday(today()); showTab(b.dataset.tab); }; });
+  [].forEach.call(document.querySelectorAll("[data-tab]"), function (b) { b.onclick = function () { if (b.dataset.tab === curTab && curTab === "today") renderToday(today());
+    if (b.dataset.tab === curTab && curTab === "practice") PV.v = "hub"; showTab(b.dataset.tab); }; });
 
   document.addEventListener("click", function (e) {
     var root = e.target.closest(".qb"); if (!root || root.id === "q-ov" || root.id === "q-sheet") return;
     var x;
     if ((x = e.target.closest("[data-open]"))) { openBlock(x.dataset.open); return; }
+    if ((x = e.target.closest("[data-pv]"))) { showPractice(x.dataset.pv, x.dataset.pm); return; }
+    if ((x = e.target.closest("[data-topic]"))) { openTopic(x.dataset.topic); return; }
     if ((x = e.target.closest("[data-date]"))) { renderToday(x.dataset.date); return; }
     if ((x = e.target.closest("[data-today]"))) { renderToday(today()); return; }
     if ((x = e.target.closest("[data-wk]"))) { var tg = addDays(curDate, +x.dataset.wk), mon = addDays(tg, -((new Date(tg + "T12:00:00").getDay() + 6) % 7)), pick = null;
