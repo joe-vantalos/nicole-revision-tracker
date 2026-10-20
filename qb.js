@@ -57,20 +57,24 @@
   }
 
   // ---------- answers + marking ----------
-  function A(id) { return S.a[id] || (S.a[id] = {}); }
-  function answered(q) { var a = S.a[q.id]; if (!a) return false;
+  // ST is the answer store of an open daily mix or mistakes session; null means the sets' own answers.
+  // It is only set while that session is on screen, so set scores never read or write it.
+  var ST = null;
+  function AS() { return ST || S.a; }
+  function A(id) { var st = AS(); return st[id] || (st[id] = {}); }
+  function answered(q) { var a = AS()[q.id]; if (!a) return false;
     if (q.type === "sba") return a.sel != null;
     if (q.type === "emq") return !!a.sel && Object.keys(a.sel).length > 0;
     if (q.type === "fill") return !!(a.text && a.text.trim());
     return !!a.text && Object.keys(a.text).some(function (k) { return a.text[k] && a.text[k].trim(); }); }
   function maxPts(q) { if (q.type === "emq") return q.items.length; if (q.type === "sa") return q.parts.reduce(function (x, p) { return x + (p.marks || 0); }, 0); if (!q.type) return q.checklist.length; return 1; }
   // marking rules live in mark.js; override is the student's own call (true = right, false = wrong)
-  function fillMatch(q) { var a = S.a[q.id] || {};
+  function fillMatch(q) { var a = AS()[q.id] || {};
     if (a.override === true || a.override === false) return {ok: a.override, you: true};
     return window.QBMark.match(a.text || "", [q.answer].concat(q.accept || [])); }
   function fillOk(q) { return fillMatch(q).ok; }
   function selfMarked(q) { return q.type === "sa" || !q.type; }
-  function grade(q) { var a = S.a[q.id] || {}, mx = maxPts(q);
+  function grade(q) { var a = AS()[q.id] || {}, mx = maxPts(q);
     if (!answered(q) && !selfMarked(q)) return {pts:0,max:mx,state:"skip"};
     if (q.type === "sba") { var ok = a.sel === q.answer; return {pts:ok?1:0,max:1,state:ok?"ok":"no"}; }
     if (q.type === "emq") { var p = q.items.reduce(function (x, it, i) { return x + ((a.sel || {})[i] === it.answer ? 1 : 0); }, 0); return {pts:p,max:mx,state:p===mx?"ok":p>0?"part":"no"}; }
@@ -518,8 +522,11 @@
   }
 
   // ---------- PRACTICE ----------
-  function renderPractice() {
+  // Every question set on one page: the original Practice tab. It is now "All question sets" in the
+  // hub, and the whole tab again when Classic Practice list is on in Settings. head replaces its header.
+  function allSetsHtml(head) {
     var byMod = {ENI:[], GIL:[], URO:[]}, h = '<header class="q-head"><div><p class="q-eyebrow">Practice</p><h1>Every question set</h1></div><button class="q-icon" data-settings aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg></button></header>';
+    if (head != null) h = head;
     Object.keys(DATA.sets).forEach(function (sid) { var s = DATA.sets[sid]; byMod[s.module].push([sid, s]); });
     ["GIL","URO","ENI"].forEach(function (m) {
       h += '<div class="q-mh mod-' + m + '"><h2>' + MOD[m] + '</h2><span class="q-chip">' + m + '</span></div><div class="q-cards">';
@@ -532,7 +539,239 @@
     h += '<div class="q-mh mod-ALL"><h2>Practice papers and OSPE</h2></div><div class="q-cards">';
     DATA.days.forEach(function (d) { d.blocks.forEach(function (b) { if (b.kind === "set") return; var f = fmt(d.date), i = blockInfo(b);
       h += '<div class="q-tcard mod-' + b.module + '"><h3>' + esc(b.title) + '</h3><div class="q-lk"><button class="q-btn sm' + (i.marked ? " ok" : "") + '" data-open="' + b.key + '">' + f.d + " " + f.m + " · " + b.questions.length + " " + (b.kind === "ospe" ? "stations" : "questions") + " · " + (i.marked ? (i.pct != null ? i.pct + "%" : "marked") : i.ans + "/" + i.n) + "</button></div></div>"; }); });
-    $("tab-practice").innerHTML = '<div class="qwrap">' + h + "</div></div>";
+    return h;
+  }
+  // Practice hub: one next step, then the modules as coloured paths, then papers and the full list.
+  // Read-only: it shows the saved answers and marks and opens sets with openBlock(), nothing else.
+  var CLASSIC = "nicole-revision-classic";
+  function classicPractice() { try { return localStorage.getItem(CLASSIC) === "1"; } catch (e) { return false; } }
+  function setClassicPractice(on) { try { if (on) localStorage.setItem(CLASSIC, "1"); else localStorage.removeItem(CLASSIC); } catch (e) {} }
+  var GEAR = '<button class="q-icon" data-settings aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg></button>';
+  var STAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg>';
+  var TICK = '<svg viewBox="0 0 24 24" aria-hidden="true" class="ck"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  var BACK = '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>';
+  var MORE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+  var ROUND = ["", "First pass", "Consolidation", "Rapid recall"];
+  var PV = {v: "hub", mod: "GIL"}; // which hub screen is showing
+
+  // Where each block sits in the plan now, after any moves she has made.
+  function whenOf() { var w = {}; DATA.days.forEach(function (d) { d.blocks.forEach(function (b) { w[b.key] = d.date; }); }); return w; }
+  function roundsOf(sid, when) { return DATA.sets[sid].rounds.map(function (r) { return BLOCKS[sid + "-R" + r[1]]; }).filter(Boolean)
+    .sort(function (a, b) { return when[a.key] < when[b.key] ? -1 : when[a.key] > when[b.key] ? 1 : 0; }); }
+  function topicsOf(m, when) {
+    return Object.keys(DATA.sets).filter(function (sid) { return DATA.sets[sid].module === m; }).map(function (sid) { return {sid: sid, rounds: roundsOf(sid, when)}; })
+      .filter(function (t) { return t.rounds.length; })
+      .sort(function (a, b) { var x = when[a.rounds[0].key], y = when[b.rounds[0].key]; return x < y ? -1 : x > y ? 1 : (a.sid < b.sid ? -1 : 1); });
+  }
+  // The earliest set not yet marked, in plan order; first passes go before the rest of a day, as on Today.
+  function upNext(m) {
+    for (var i = 0; i < DATA.days.length; i++) { var d = DATA.days[i];
+      var order = d.blocks.filter(function (b) { return b.kind === "set" && b.label === "First pass"; });
+      order = order.concat(d.blocks.filter(function (b) { return order.indexOf(b) < 0; }));
+      for (var k = 0; k < order.length; k++) { var b = order[k]; if (m && b.module !== m) continue; if (!S.marked[b.key]) return {b: b, date: d.date}; } }
+    return null;
+  }
+  function whenLabel(iso) { var t = today(), f = fmt(iso); return iso === t ? "Today" : (iso < t ? "Overdue · " : "") + f.w + " " + f.d + " " + f.m; }
+  function weakSets() { return Object.keys(BLOCKS).map(function (k) { return [BLOCKS[k], blockInfo(BLOCKS[k])]; })
+    .filter(function (p) { return p[1].marked && p[1].pct != null && p[1].pct < 60; }).sort(function (a, b) { return a[1].pct - b[1].pct; }); }
+  function hubRow(attrs, title, sub, icon, mod, badge) {
+    return '<button class="ph-row mod-' + mod + '" ' + attrs + '><span class="ph-rt"><b>' + title + "</b><small>" + sub + '</small></span><span class="ph-ic">' + icon + "</span>" +
+      (badge ? '<span class="ph-badge">' + badge + "</span>" : "") + "</button>";
+  }
+  function subHead(title, eyebrow) {
+    return '<header class="ph-sub"><button class="q-icon" data-pv="hub" aria-label="Back to Practice">' + BACK + '</button><div><p class="q-eyebrow">' + eyebrow + "</p><h1>" + title + "</h1></div></header>";
+  }
+
+  function hubHtml() {
+    var n = streakDays(), when = whenOf(), nx = upNext(), h = '<header class="q-head"><div><p class="q-eyebrow">Practice</p><h1>Practice</h1></div><div class="ph-hr">' +
+      (n ? '<span class="ph-streak" aria-label="' + n + ' day streak"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-4-1-6 1-9.5z"/></svg>' + n + "</span>" : "") + GEAR + "</div></header>" + mixCard();
+    if (nx) { var b = nx.b, i = blockInfo(b), unit = b.kind === "ospe" ? "stations" : "questions";
+      h += '<section class="ph-hero mod-' + b.module + '"><div class="ph-hl"><span class="q-chip">' + (MOD[b.module] && b.module !== "ALL" ? b.module : "Mixed") + '</span><span class="ph-when' + (nx.date < today() ? " bad" : "") + '">' + whenLabel(nx.date) + "</span></div>" +
+        '<p class="q-eyebrow">Up next</p><h2>' + esc(b.title) + "</h2><p class=\"ph-meta\">" + esc(b.label) + " · " + i.n + " " + unit + " · about " + estMin(b) + " min</p>" +
+        '<button class="q-btn pri ph-go" data-open="' + b.key + '">' + (i.ans ? "Continue · " + i.ans + "/" + i.n : "Start") + "</button></section>";
+    } else h += '<section class="ph-hero mod-ALL"><p class="q-eyebrow">Up next</p><h2>Every set is marked</h2><p class="ph-meta">Go back over the ones that need another pass, below.</p></section>';
+
+    var weak = weakSets().length;
+    var mc = mistakes().length;
+    h += '<h2 class="ph-h">Fix weak spots</h2>' + hubRow('data-pv="mist"', "Mistakes", mc ? "Wrong answers stay here until you get them right" : "Questions you get wrong will appear here",
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5"/></svg>', "ALL", mc ? (mc > 99 ? "99+" : String(mc)) : "") + hubRow('data-pv="weak"', "Needs another pass", weak ? "Sets you scored under 60%, lowest first" : "Sets you score under 60% will appear here",
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9M12 19V5M19 19v-7"/></svg>', "ALL", weak ? String(weak) : "");
+
+    h += '<h2 class="ph-h">Your modules</h2><div class="ph-mods">';
+    ["GIL","URO","ENI"].forEach(function (m) { var ts = topicsOf(m, when), rounds = 0, mk = 0, started = 0;
+      ts.forEach(function (t) { var any = false; t.rounds.forEach(function (b) { rounds++; if (S.marked[b.key]) { mk++; any = true; } }); if (any) started++; });
+      h += '<button class="ph-mod mod-' + m + '" data-pv="mod" data-pm="' + m + '" aria-label="' + MOD[m] + ", " + started + " of " + ts.length + ' topics started"><span class="ph-ring" style="--p:' + (rounds ? Math.round(100 * mk / rounds) : 0) + '"><span>' + m + "</span></span><small>" + started + " of " + ts.length + "</small></button>"; });
+    h += "</div>";
+
+    var papers = []; DATA.days.forEach(function (d) { d.blocks.forEach(function (b) { if (b.kind !== "set") papers.push([b, d.date]); }); });
+    var pdone = papers.filter(function (p) { return S.marked[p[0].key]; }).length;
+    h += '<h2 class="ph-h">Exam practice</h2>' + hubRow('data-pv="exam"', "Papers, mocks and OSPE", papers.length + " in all · " + (pdone ? pdone + " marked" : papers.length ? "first on " + fmt(papers[0][1]).d + " " + fmt(papers[0][1]).m : ""),
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0zM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 12v4M8 20h8"/></svg>', "OSPE", "");
+    h += hubRow('data-pv="all"', "All question sets", "Every set on one page, as before", MORE, "ALL", "");
+    return h;
+  }
+
+  function modHtml(m) {
+    var when = whenOf(), ts = topicsOf(m, when), nx = upNext(m), cur = nx ? nx.b.key.split("-R")[0] : null, started = 0, wk = null;
+    ts.forEach(function (t) { if (t.rounds.some(function (b) { return S.marked[b.key]; })) started++; });
+    var h = '<header class="ph-top"><button class="q-icon" data-pv="hub" aria-label="Back to Practice">' + BACK + '</button><div class="ph-pills" role="group" aria-label="Module">' +
+      ["GIL","URO","ENI"].map(function (x) { return '<button class="ph-pill mod-' + x + '" data-pv="mod" data-pm="' + x + '" aria-pressed="' + (x === m) + '">' + x + "</button>"; }).join("") + "</div></header>" +
+      '<div class="ph-banner mod-' + m + '"><p class="q-eyebrow">' + started + " of " + ts.length + " topics started</p><h1>" + MOD[m] + "</h1></div>";
+    var XS = [0, -56, -84, -56, 0, 56, 84, 56];
+    h += '<div class="ph-path mod-' + m + '">';
+    ts.forEach(function (t, k) {
+      var first = when[t.rounds[0].key], x = new Date(first + "T12:00:00"), mon = addDays(first, -((x.getDay() + 6) % 7));
+      if (mon !== wk) { wk = mon; var f = fmt(mon); h += '<div class="ph-wk">Week of ' + f.d + " " + f.m + "</div>"; }
+      var mk = t.rounds.filter(function (b) { return S.marked[b.key]; }).length, all = mk === t.rounds.length, isCur = t.sid === cur, off = XS[k % XS.length];
+      var stars = t.rounds.map(function (b) { return '<i class="' + (S.marked[b.key] ? "on" : "") + '">' + STAR + "</i>"; }).join("");
+      h += '<div class="ph-step' + (isCur ? " cur" : "") + '" style="--x:' + off + 'px"><button class="ph-node' + (mk ? " s-on" : "") + (isCur ? " cur" : "") + '" data-topic="' + t.sid + '" aria-label="' + esc(DATA.sets[t.sid].name) + ", " + mk + " of " + t.rounds.length + ' rounds marked">' +
+        (isCur ? '<span class="ph-bub">' + (blockInfo(nx.b).ans ? "CONTINUE" : "START") + "</span>" : "") + (all ? TICK : STAR) + '</button><span class="ph-stars">' + stars + "</span>" +
+        '<span class="ph-name ' + (off > 0 ? "l" : "r") + '">' + esc(DATA.sets[t.sid].name) + "</span></div>";
+    });
+    return h + "</div>";
+  }
+
+  function examHtml() {
+    var h = subHead("Papers, mocks and OSPE", "Exam practice") + '<div class="q-cards">';
+    DATA.days.forEach(function (d) { d.blocks.forEach(function (b) { if (b.kind === "set") return;
+      h += '<div class="q-tcard mod-' + b.module + '"><h3>' + esc(b.title) + '</h3><p class="ph-date">' + whenLabel(d.date) + "</p>" + setButton(b) + "</div>"; }); });
+    return h + "</div>";
+  }
+  function weakHtml() {
+    var w = weakSets(), h = subHead("Needs another pass", "Fix weak spots");
+    if (!w.length) return h + '<div class="q-empty">Sets you score under 60% appear here, lowest first.</div>';
+    return h + '<div class="q-cards">' + w.map(function (p) { return '<div class="q-tcard mod-' + p[0].module + '"><h3>' + esc(p[0].title) + "</h3>" + setButton(p[0]) + "</div>"; }).join("") + "</div>";
+  }
+
+  // Tapping a topic on the path: every round of it, each opening the set as before.
+  function openTopic(sid) {
+    var when = whenOf(), s = DATA.sets[sid], ts = topicsOf(s.module, when), rs = roundsOf(sid, when), pos = 0, nextKey = null;
+    ts.forEach(function (t, k) { if (t.sid === sid) pos = k + 1; });
+    rs.forEach(function (b) { if (!nextKey && !S.marked[b.key]) nextKey = b.key; });
+    var h = '<p class="q-eyebrow">' + s.module + " · Topic " + pos + " of " + ts.length + "</p><h3>" + esc(s.name) + "</h3>";
+    rs.forEach(function (b) { h += '<p class="ph-rd"><b>' + esc(b.label) + "</b> · " + whenLabel(when[b.key]) + (b.key === nextKey ? ' <span class="ph-tag">Up next</span>' : "") + "</p>" + setButton(b); });
+    h += '<div class="q-row"><button class="q-btn wide" data-close>Close</button></div>';
+    var sh = sheet(h, s.module);
+    sh.querySelector("[data-close]").onclick = function () { sh.hidden = true; };
+    [].forEach.call(sh.querySelectorAll("[data-open]"), function (x) { x.onclick = function () { sh.hidden = true; openBlock(x.dataset.open); }; });
+  }
+
+  function renderPractice() {
+    var el = $("tab-practice");
+    if (classicPractice()) { el.innerHTML = '<div class="qwrap">' + allSetsHtml() + "</div></div>"; return; }
+    var v = PV.v, body = v === "mod" ? modHtml(PV.mod) : v === "exam" ? examHtml() : v === "weak" ? weakHtml() : v === "mist" ? mistHtml()
+      : v === "all" ? allSetsHtml(subHead("All question sets", "Practice")) : hubHtml();
+    el.innerHTML = '<div class="qwrap ph">' + body + "</div>";
+  }
+  function showPractice(v, mod) { PV = {v: v, mod: mod || PV.mod}; renderPractice(); window.scrollTo(0, 0); }
+
+  // ---------- daily mix + mistakes ----------
+  // A review session keeps its answers in S.rv[kind].a and its outcomes in S.mw / S.mr (last wrong /
+  // last right, per question), S.seen (last day used) and S.mixLog. None of it touches S.a, S.marked
+  // or S.pos, so set scores, the timetable and Progress are never changed by a review.
+  var QIX = {}; Object.keys(BLOCKS).forEach(function (k) { BLOCKS[k].questions.forEach(function (q) { QIX[q.id] = {q: q, b: BLOCKS[k]}; }); });
+  var AUTO = {sba: 1, emq: 1, fill: 1}; // reviews only use questions the app marks itself
+  var MIX_N = 10, MIX_MISTAKES = 4, MIST_N = 15, RV = null;
+  function M(k) { return S[k] || (S[k] = {}); }
+  function withStore(st, fn) { var prev = ST; ST = st; try { return fn(); } finally { ST = prev; } }
+  function topicOf(id) { var b = QIX[id].b; return b.sid || b.key; }
+  // A mistake: wrong or part right in a marked set or a review, and not answered right in a review since.
+  function mistakes() {
+    var mw = S.mw || {}, mr = S.mr || {}, out = [];
+    withStore(null, function () { Object.keys(QIX).forEach(function (id) { var x = QIX[id]; if (!AUTO[x.q.type]) return;
+      var w = mw[id] || 0, m = S.marked[x.b.key];
+      if (m) { var g = grade(x.q); if (g.state === "no" || g.state === "part") w = Math.max(w, m.at || 1); }
+      if (w && !((mr[id] || 0) > w)) out.push({id: id, at: w}); }); });
+    return out.sort(function (a, b) { return a.at - b.at; });
+  }
+  function mixPool() { var ids = []; Object.keys(S.marked).forEach(function (k) { var b = BLOCKS[k]; if (b) b.questions.forEach(function (q) { if (AUTO[q.type]) ids.push(q.id); }); }); return ids; }
+  // Up to 4 waiting mistakes, oldest first; then questions from the sets tested longest ago, at most two
+  // per topic and none used in the last 7 days. Those limits relax only when there aren't enough questions.
+  function buildMix() {
+    var t = today(), wk = addDays(t, -7), seen = S.seen || {}, pick = [], used = {}, per = {}, mis = mistakes();
+    mis.forEach(function (m) { used[m.id] = 1; });
+    mis.slice(0, MIX_MISTAKES).forEach(function (m) { pick.push(m.id); });
+    function last(id) { var m = S.marked[QIX[id].b.key]; return Math.max(seen[id] ? new Date(seen[id] + "T12:00:00").getTime() : 0, m ? m.at || 0 : 0); }
+    var ranked = mixPool().filter(function (id) { return !used[id]; }).map(function (id) { return {id: id, l: last(id), r: Math.random()}; })
+      .sort(function (a, b) { return a.l - b.l || a.r - b.r; });
+    [function (x) { return !(seen[x.id] > wk) && (per[topicOf(x.id)] || 0) < 2; }, function (x) { return !(seen[x.id] > wk); }, function () { return true; }]
+      .forEach(function (ok) { ranked.forEach(function (x) { if (pick.length >= MIX_N || used[x.id] || !ok(x)) return;
+        pick.push(x.id); used[x.id] = 1; per[topicOf(x.id)] = (per[topicOf(x.id)] || 0) + 1; }); });
+    for (var i = pick.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), tmp = pick[i]; pick[i] = pick[j]; pick[j] = tmp; }
+    return pick;
+  }
+  function rvBlock(rv) { var mix = rv.kind === "mix";
+    return {key: "rv-" + rv.kind, kind: rv.kind, module: "ALL", title: mix ? "Daily mix" : "Mistakes", label: mix ? "Today's review" : "Until you get them right",
+      questions: rv.ids.map(function (id) { return QIX[id] && QIX[id].q; }).filter(Boolean)}; }
+  function rvLive(kind) { var rv = (S.rv || {})[kind]; return rv && (kind !== "mix" || rv.date === today()) ? rv : null; }
+  function rvStats(rv) { return withStore(rv.a, function () { var b = rvBlock(rv), pts = 0, max = 0, ok = 0, ans = 0;
+    b.questions.forEach(function (q) { var g = grade(q); pts += g.pts; max += g.max; if (g.state === "ok") ok++; if (answered(q)) ans++; });
+    return {n: b.questions.length, ok: ok, ans: ans, pts: pts, max: max, pct: max ? Math.round(100 * pts / max) : 0}; }); }
+  function startReview(kind, fresh) {
+    var rv = rvLive(kind);
+    if (!rv || rv.done || fresh) {
+      var ids = kind === "mix" ? buildMix() : mistakes().slice(0, MIST_N).map(function (m) { return m.id; });
+      if (!ids.length) { toast(kind === "mix" ? "Mark a question set first, then your daily mix can start." : "No mistakes waiting."); return; }
+      rv = {kind: kind, date: today(), ids: ids, a: {}, i: 0, done: false, at: Date.now()};
+      M("rv")[kind] = rv; save();
+    }
+    R = null; RV = null; ST = rv.a; P = {key: "rv-" + kind, blk: rvBlock(rv), rv: rv, i: Math.min(rv.i || 0, rv.ids.length - 1)}; renderPlayer();
+  }
+  function finishReview() {
+    var rv = P.rv, b = curBlock(), now = Date.now(), t = today(), waiting = {}, cleared = 0;
+    mistakes().forEach(function (m) { waiting[m.id] = 1; });
+    withStore(rv.a, function () { b.questions.forEach(function (q) { var g = grade(q); M("seen")[q.id] = t;
+      if (g.state === "ok") { M("mr")[q.id] = now; if (waiting[q.id]) cleared++; }
+      else if (g.state === "no" || g.state === "part") M("mw")[q.id] = now; }); });
+    rv.done = true; rv.cleared = cleared;
+    if (rv.kind === "mix") { var st = rvStats(rv), log = M("mixLog"); (log[t] = log[t] || []).push({ok: st.ok, n: st.n, pts: st.pts, max: st.max}); }
+    logActivity(); P = null; openReviewResults(rv.kind);
+  }
+  function openReviewResults(kind) { var rv = (S.rv || {})[kind]; if (!rv || !rv.done) return; RV = rv; renderReviewResults(); }
+  function renderReviewResults() {
+    var rv = RV, b = rvBlock(rv); ST = rv.a;
+    var st = rvStats(rv), gs = b.questions.map(grade), wrong = b.questions.map(function (q, k) { return [q, k, gs[k]]; }).filter(function (x) { return x[2].state !== "ok"; });
+    var head = st.pct === 100 ? "Perfect!" : st.pct >= 80 ? "Great work" : st.pct >= 50 ? "Good effort" : "Keep at it";
+    var line = (rv.kind === "mix" ? "Daily mix done." : "Mistakes round done.") + (rv.cleared ? " " + rv.cleared + (rv.cleared === 1 ? " mistake" : " mistakes") + " cleared." : "") +
+      (wrong.length ? " The ones you missed wait in Mistakes." : "");
+    var ov = ovShell("ALL");
+    ov.innerHTML = '<div class="q-ovtop"><div class="in"><button class="q-icon" data-x aria-label="Close"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button><div class="q-count" style="flex:1">' + esc(b.title) + "</div></div></div>" +
+      '<div class="q-ovbody" id="q-rbody"><div class="in"><div class="q-res"><div class="q-bigring" style="--p:' + st.pct + '"><div><b>' + st.pct + "%</b><small>" + st.ok + " of " + st.n + " right</small></div></div><h2>" + head + "</h2><p>" + line + "</p></div>" +
+      '<div class="q-tiles rv-tiles"><div class="q-tile g"><b>' + st.ok + '</b><span>Correct</span></div><div class="q-tile b"><b>' + (st.n - st.ok) + '</b><span>To look over</span></div><div class="q-tile"><b>' + (rv.cleared || 0) + "</b><span>Mistakes cleared</span></div></div>" +
+      (wrong.length ? '<div class="q-mh"><h2>To look over</h2></div>' + wrong.map(function (x) { return reviewHtml(x[0], x[1] + 1); }).join("") : '<div class="q-empty">Every answer was right.</div>') +
+      '</div></div><div class="q-ovfoot"><div class="in">' + (rv.kind === "mix" ? '<button class="q-btn" data-again>Another round</button>' : "") + '<button class="q-btn pri" data-x2>Done</button></div></div>';
+    ov.querySelector("[data-x]").onclick = closeOv; ov.querySelector("[data-x2]").onclick = closeOv;
+    var ag = ov.querySelector("[data-again]"); if (ag) ag.onclick = function () { startReview("mix", true); };
+    // "My wording means the same" / "Count it wrong" re-settle that question for the mistakes list
+    [].forEach.call(ov.querySelectorAll("[data-override]"), function (x) { x.onclick = function () { var id = x.dataset.override, a = A(id), now = Date.now();
+      if (x.dataset.v === "") delete a.override; else a.override = x.dataset.v === "1";
+      var g = grade(QIX[id].q); if (g.state === "ok") M("mr")[id] = now; else M("mw")[id] = now;
+      save(); var y = $("q-rbody").scrollTop; renderReviewResults(); $("q-rbody").scrollTop = y; }; });
+  }
+
+  function mixCard() {
+    var pool = mixPool().length, rv = rvLive("mix"), h = '<section class="ph-hero ph-mix mod-ALL"><div class="ph-hl"><span class="q-chip">Today’s review</span><span class="ph-when">All modules</span></div>';
+    if (!pool) return h + "<h2>Your daily mix starts soon</h2><p class=\"ph-meta\">Mark your first question set and you get 10 quick questions a day from sets you’ve done, with your mistakes mixed in.</p></section>";
+    if (rv && rv.done) { var st = rvStats(rv);
+      return h + '<h2><span class="ph-done" aria-hidden="true">' + TICK + "</span>Done for today</h2><p class=\"ph-meta\">" + st.ok + " of " + st.n + " right" + (rv.cleared ? " · " + rv.cleared + " mistakes cleared" : "") + "</p>" +
+        '<div class="ph-btns"><button class="q-btn ph-go2" data-rvres="mix">See answers</button><button class="q-btn pri ph-go" data-rv="mix" data-fresh="1">Another round</button></div></section>'; }
+    if (rv) { var s2 = rvStats(rv); return h + "<h2>Daily mix</h2><p class=\"ph-meta\">" + s2.n + " questions from sets you’ve done</p>" +
+      '<button class="q-btn pri ph-go" data-rv="mix">Continue · ' + s2.ans + "/" + s2.n + "</button></section>"; }
+    var n = Math.min(MIX_N, pool), mis = Math.min(MIX_MISTAKES, mistakes().length);
+    return h + "<h2>Daily mix</h2><p class=\"ph-meta\">" + n + " quick questions from sets you’ve done" + (mis ? ", including " + mis + " of your mistakes" : "") + " · about " + Math.max(2, Math.round(n / 2)) + " min</p>" +
+      '<button class="q-btn pri ph-go" data-rv="mix">Start</button></section>';
+  }
+  function mistHtml() {
+    var ms = mistakes(), rv = rvLive("mist"), h = subHead("Mistakes", "Fix weak spots");
+    if (!ms.length && !(rv && !rv.done)) return h + '<div class="q-empty">No mistakes waiting. Questions you get wrong in a set or a review land here until you get them right.</div>';
+    var cont = rv && !rv.done ? rvStats(rv) : null;
+    h += '<p class="ph-meta ph-lead">Questions you got wrong, in sets and reviews. Get one right in a round and it leaves the list.</p>' +
+      '<button class="q-btn pri ph-go ph-wide mod-ALL" data-rv="mist">' + (cont ? "Continue · " + cont.ans + "/" + cont.n : "Start · " + Math.min(MIST_N, ms.length) + " questions") + "</button>";
+    h += '<div class="q-mh"><h2>' + ms.length + (ms.length === 1 ? " mistake" : " mistakes") + '</h2></div><div class="ph-mlist">';
+    ms.slice(0, 40).forEach(function (m) { var x = QIX[m.id], st = x.q.type === "emq" && x.q.items.length ? x.q.items[0].prompt + (x.q.items.length > 1 ? " (+" + (x.q.items.length - 1) + " more)" : "") : x.q.stem || "";
+      h += '<div class="ph-mi mod-' + x.b.module + '"><i aria-hidden="true"></i><span><b>' + esc(st.length > 90 ? st.slice(0, 88) + "…" : st) + "</b><small>" + (x.b.module === "ALL" || x.b.module === "OSPE" ? "Paper" : x.b.module) + " · " + TYPE[x.q.type] + " · " + esc(x.b.title) + "</small></span></div>"; });
+    if (ms.length > 40) h += '<p class="ph-more">and ' + (ms.length - 40) + " more</p>";
+    return h + "</div>";
   }
 
   // ---------- PROGRESS ----------
@@ -579,6 +818,8 @@
     return '<div class="q-notes"><ul>' +
       "<li><b>Today</b> lists the sessions due today with that topic's questions underneath. Tick each session when you've revised it.</li>" +
       "<li>A session turns <span class=\"warn\">amber</span> when you've marked its questions but haven't ticked it, and <span class=\"bad\">red</span> once its day has passed unticked. Red ones collect under Overdue at the top of Today.</li>" +
+      "<li><b>Practice</b> opens on your next set. Each module is a path of topics in plan order: a filled circle has a marked round, a tick means every round is marked, and the stars underneath are its rounds. Tap a circle to see and start its rounds. <b>All question sets</b> at the bottom is the full list, and <b>Classic Practice list</b> (Settings → Practice) makes that list the whole tab again.</li>" +
+      "<li><b>Daily mix</b> is a short quiz each day from sets you've already marked, with up to 4 of your mistakes mixed in and the topics you were tested on longest ago first. <b>Mistakes</b> lists every question you got wrong in a set or a review; get it right in a round and it leaves the list. Neither changes your set scores, your plan or your ticks; they only count towards your streak.</li>" +
       "<li>Questions come one at a time. Nothing is marked until you press <b>Finish and mark</b> at the end of the set.</li>" +
       "<li><b>Think first</b> (Settings → Practice) hides the options on single best answer questions until you tap Show options. Answering from memory first is a better test, and the options can't hint at the answer.</li>" +
       "<li>Single best answer, extended matching and fill in the blank mark themselves. For short answers and OSPE stations you mark yourself against the mark scheme.</li>" +
@@ -610,14 +851,16 @@
   var THINK = "nicole-revision-think";
   function thinkFirst() { try { return localStorage.getItem(THINK) === "1"; } catch (e) { return false; } }
   function setThinkFirst(on) { try { if (on) localStorage.setItem(THINK, "1"); else localStorage.removeItem(THINK); } catch (e) {} }
-  var RS = null; // reset selection {ticks, answers, streak, flags, mods:{URO,ENI,GIL}}
+  var RS = null; // reset selection {ticks, answers, streak, flags, review, mods:{URO,ENI,GIL}}
   function resetCounts(sel) {
-    var mods = sel.mods, c = {ticks:0, flags:0, sets:0, answers:0, days:0};
+    var mods = sel.mods, c = {ticks:0, flags:0, sets:0, answers:0, days:0, reviews:0};
     if (sel.ticks) Object.keys(done).forEach(function (id) { if (mods[id.split("-")[0]]) c.ticks++; });
     if (sel.flags) Object.keys(flags).forEach(function (id) { if (mods[id.split("-")[0]]) c.flags++; });
     if (sel.answers) Object.keys(BLOCKS).forEach(function (k) { var b = BLOCKS[k]; if (!inScope(b, mods)) return;
       if (S.marked[k]) c.sets++; b.questions.forEach(function (q) { if (S.a[q.id]) c.answers++; }); });
     if (sel.streak) c.days = Object.keys(S.days).length;
+    if (sel.review) { c.reviews = Object.keys(S.mw || {}).length + Object.keys(S.mr || {}).length + Object.keys(S.seen || {}).length;
+      Object.keys(S.rv || {}).forEach(function (k) { if (S.rv[k]) c.reviews++; }); }
     return c;
   }
   function inScope(b, mods) { return b.module === "OSPE" || b.module === "ALL" ? mods.URO && mods.ENI && mods.GIL : !!mods[b.module]; }
@@ -628,6 +871,7 @@
     if (sel.answers) Object.keys(BLOCKS).forEach(function (k) { var b = BLOCKS[k]; if (!inScope(b, mods)) return;
       delete S.marked[k]; delete S.pos[k]; b.questions.forEach(function (q) { delete S.a[q.id]; }); });
     if (sel.streak) S.days = {};
+    if (sel.review) { delete S.rv; delete S.mw; delete S.mr; delete S.seen; delete S.mixLog; }
     store(KEY, done); store(FLAG_KEY, flags); save(); planDirty = true;
   }
   function summaryLines(sel) {
@@ -636,7 +880,8 @@
     if (sel.answers) out.push("<b>" + c.sets + "</b> marked question " + (c.sets === 1 ? "set" : "sets") + (c.answers ? " and <b>" + c.answers + "</b> saved " + (c.answers === 1 ? "answer" : "answers") : "") + " in " + scope + (names.length === 3 ? ", including the mocks and OSPE" : ""));
     if (sel.flags) out.push("<b>" + c.flags + "</b> " + (c.flags === 1 ? "flag" : "flags") + " in " + scope);
     if (sel.streak) out.push("your practice streak (" + c.days + " " + (c.days === 1 ? "day" : "days") + " of history)");
-    return {lines:out, total:c.ticks + c.sets + c.answers + c.flags + c.days};
+    if (sel.review) out.push("your daily mix and mistakes history (" + c.reviews + " saved " + (c.reviews === 1 ? "entry" : "entries") + ")");
+    return {lines:out, total:c.ticks + c.sets + c.answers + c.flags + c.days + c.reviews};
   }
   function toast(msg, ms, act) {
     var t = $("q-toast");
@@ -649,7 +894,7 @@
 
   function openSettings(section) {
     var ov = ovShell("ALL"), mode = themeMode(), accent = accentName();
-    RS = RS || {ticks:false, answers:false, flags:false, streak:false, mods:{URO:true, ENI:true, GIL:true}};
+    RS = RS || {ticks:false, answers:false, flags:false, streak:false, review:false, mods:{URO:true, ENI:true, GIL:true}};
     function tog(key, label, hint) { return '<label class="q-row-t"><span><b>' + label + "</b><small>" + hint + '</small></span><input type="checkbox" class="q-switch" data-rs="' + key + '"' + (RS[key] ? " checked" : "") + "></label>"; }
     ov.innerHTML = '<div class="q-ovtop"><div class="in"><button class="q-icon" data-x aria-label="Close settings"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button><div class="q-count" style="flex:1">Settings</div></div></div>' +
       '<div class="q-ovbody" id="q-sbody"><div class="in q-settings">' +
@@ -657,14 +902,15 @@
       '<div class="q-seg" role="radiogroup" aria-label="Theme">' + [["light","Light"],["dark","Dark"],["system","Match phone"]].map(function (o) { return '<button role="radio" aria-checked="' + (mode === o[0]) + '" data-mode="' + o[0] + '">' + o[1] + "</button>"; }).join("") + "</div>" +
       '<div class="q-srow"><span><b>Colour</b><small>' + ACCENTS.filter(function (o) { return o[0] === accent; })[0][1] + '</small></span></div>' +
       '<div class="q-swatches" role="radiogroup" aria-label="Colour">' + ACCENTS.map(function (o) { return '<button role="radio" aria-checked="' + (accent === o[0]) + '" aria-label="' + o[1] + '" data-accent="' + o[0] + '" style="--sw:' + o[2] + '"><span></span>' + o[1] + "</button>"; }).join("") + "</div></div>" +
-      '<p class="q-slabel">Practice</p><div class="q-sgroup"><label class="q-row-t"><span><b>Think first</b><small>Hide the options on single best answer questions until you tap Show options, so you answer from memory</small></span><input type="checkbox" class="q-switch on-accent" data-think' + (thinkFirst() ? " checked" : "") + "></label></div>" +
+      '<p class="q-slabel">Practice</p><div class="q-sgroup"><label class="q-row-t"><span><b>Think first</b><small>Hide the options on single best answer questions until you tap Show options, so you answer from memory</small></span><input type="checkbox" class="q-switch on-accent" data-think' + (thinkFirst() ? " checked" : "") + "></label>" +
+      '<label class="q-row-t"><span><b>Classic Practice list</b><small>Show every question set on one page in the Practice tab, as it was before the hub</small></span><input type="checkbox" class="q-switch on-accent" data-classic' + (classicPractice() ? " checked" : "") + "></label></div>" +
       '<p class="q-slabel">Your plan</p><div class="q-sgroup">' + planGroupHtml(section === "plan") + "</div>" +
       '<p class="q-slabel">Help</p><div class="q-sgroup"><details class="q-howto"' + (section === "help" ? " open" : "") + '><summary><span><b>How it works</b><small>Ticking, colours, questions and marking</small></span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></summary>' + howItWorksHtml() + "</details></div>" +
       '<p class="q-slabel">Your data</p><div class="q-sgroup"><button class="q-srow q-link" data-bk="export"><span><b>Save a backup</b><small>Ticks, flags and question answers in one file</small></span><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></button>' +
       '<button class="q-srow q-link" data-bk="import"><span><b>Restore from a backup</b><small>Adds anything missing; never removes progress</small></span><svg viewBox="0 0 24 24"><path d="M12 21V9M7 14l5-5 5 5M5 3h14"/></svg></button></div>' +
       '<p class="q-slabel bad">Danger zone</p><div class="q-sgroup q-danger"><div class="q-srow"><span><b>Reset progress</b><small>Choose what to clear. You confirm three times before anything is deleted.</small></span></div>' +
-      '<div class="q-sub">What to clear</div>' + tog("ticks", "Session ticks", "The ticks on Today and Plan") + tog("answers", "Question answers and scores", "Answers, marks and results for question sets") + tog("flags", "Flags", "Sessions flagged for another pass") + tog("streak", "Practice streak", "The days-practised history") +
-      '<div class="q-sub">Which modules</div><div class="q-chips">' + ["URO","ENI","GIL"].map(function (m) { return '<label class="q-mchip mod-' + m + '"><input type="checkbox" data-rm="' + m + '"' + (RS.mods[m] ? " checked" : "") + "><span>" + m + "</span></label>"; }).join("") + '</div><p class="q-hint2">The streak covers all modules. Mocks and OSPE only reset when all three modules are selected.</p>' +
+      '<div class="q-sub">What to clear</div>' + tog("ticks", "Session ticks", "The ticks on Today and Plan") + tog("answers", "Question answers and scores", "Answers, marks and results for question sets") + tog("flags", "Flags", "Sessions flagged for another pass") + tog("streak", "Practice streak", "The days-practised history") + tog("review", "Daily mix and mistakes", "Review history and mistakes cleared in reviews. Mistakes from marked sets come from their answers, so they stay") +
+      '<div class="q-sub">Which modules</div><div class="q-chips">' + ["URO","ENI","GIL"].map(function (m) { return '<label class="q-mchip mod-' + m + '"><input type="checkbox" data-rm="' + m + '"' + (RS.mods[m] ? " checked" : "") + "><span>" + m + "</span></label>"; }).join("") + '</div><p class="q-hint2">The streak and the daily mix history cover all modules. Mocks and OSPE only reset when all three modules are selected.</p>' +
       '<button class="q-btn q-dangerbtn" data-reset-go>Reset selected…</button></div>' +
       '<p class="q-foot2">Nicole\'s revision · Everything saves on this phone only.</p></div></div>';
     ov.querySelector("[data-x]").onclick = closeOv;
@@ -672,6 +918,7 @@
       [].forEach.call(ov.querySelectorAll("[data-accent]"), function (x) { x.setAttribute("aria-checked", x === b); });
       b.parentNode.previousElementSibling.querySelector("small").textContent = b.getAttribute("aria-label"); }; });
     ov.querySelector("[data-think]").onchange = function () { setThinkFirst(this.checked); };
+    ov.querySelector("[data-classic]").onchange = function () { setClassicPractice(this.checked); PV.v = "hub"; };
     [].forEach.call(ov.querySelectorAll("[data-mode]"), function (b) { b.onclick = function () { setTheme(b.dataset.mode); [].forEach.call(ov.querySelectorAll("[data-mode]"), function (x) { x.setAttribute("aria-checked", x === b); }); }; });
     [].forEach.call(ov.querySelectorAll("[data-rs]"), function (x) { x.onchange = function () { RS[x.dataset.rs] = x.checked; updGo(); }; });
     [].forEach.call(ov.querySelectorAll("[data-rm]"), function (x) { x.onchange = function () { RS.mods[x.dataset.rm] = x.checked; updGo(); }; });
@@ -695,7 +942,7 @@
     ov.querySelector('[data-bk="export"]').onclick = function () { $("bk-export").click(); toast("Backup saved to your downloads."); };
     ov.querySelector('[data-bk="import"]').onclick = function () { $("bk-import").click(); };
     var go = ov.querySelector("[data-reset-go]");
-    function updGo() { var anyWhat = RS.ticks || RS.answers || RS.flags || RS.streak, anyMod = RS.mods.URO || RS.mods.ENI || RS.mods.GIL || (RS.streak && !RS.ticks && !RS.answers && !RS.flags);
+    function updGo() { var anyWhat = RS.ticks || RS.answers || RS.flags || RS.streak || RS.review, anyMod = RS.mods.URO || RS.mods.ENI || RS.mods.GIL || ((RS.streak || RS.review) && !RS.ticks && !RS.answers && !RS.flags);
       go.disabled = !(anyWhat && anyMod); go.textContent = go.disabled ? "Choose what to reset" : "Reset selected…"; }
     updGo();
     go.onclick = confirmStep1;
@@ -728,10 +975,11 @@
 
   // ---------- player ----------
   var P = null, R = null;
-  function openBlock(key) { var b = BLOCKS[key]; if (S.marked[key]) return openResults(key); P = {key:key, i:Math.min(S.pos[key] || 0, b.questions.length - 1)}; renderPlayer(); }
-  function closeOv() { $("q-ov").hidden = true; $("q-ov").innerHTML = ""; document.body.style.overflow = ""; P = null; R = null; refresh(); }
+  function openBlock(key) { var b = BLOCKS[key]; ST = null; if (S.marked[key]) return openResults(key); P = {key:key, i:Math.min(S.pos[key] || 0, b.questions.length - 1)}; renderPlayer(); }
+  function closeOv() { $("q-ov").hidden = true; $("q-ov").innerHTML = ""; document.body.style.overflow = ""; P = null; R = null; RV = null; ST = null; refresh(); }
+  function curBlock() { return P.blk || BLOCKS[P.key]; }
   function qInput(q) {
-    var a = S.a[q.id] || {}, h = "";
+    var a = AS()[q.id] || {}, h = "";
     if (q.type === "sba" && thinkFirst() && a.sel == null && !(P.shown && P.shown[q.id])) {
       h += '<p class="q-stem">' + esc(q.stem) + '</p><div class="q-think"><b>Think of your answer first</b><small>Have an answer in your head? Then look at the options.</small><button class="q-btn sm" data-reveal>Show options</button></div>';
     } else if (q.type === "sba") {
@@ -752,8 +1000,8 @@
   }
   function ovShell(mod) { var ov = $("q-ov"); ov.className = "q-ov qb mod-" + mod; ov.hidden = false; document.body.style.overflow = "hidden"; return ov; }
   function renderPlayer() {
-    var b = BLOCKS[P.key], q = b.questions[P.i], n = b.questions.length, ans = b.questions.filter(answered).length, last = P.i === n - 1;
-    S.pos[P.key] = P.i; save();
+    var b = curBlock(), q = b.questions[P.i], n = b.questions.length, ans = b.questions.filter(answered).length, last = P.i === n - 1;
+    if (P.rv) P.rv.i = P.i; else S.pos[P.key] = P.i; save();
     var ov = ovShell(b.module);
     ov.innerHTML = '<div class="q-ovtop"><div class="in"><button class="q-icon" data-x aria-label="Save and close"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button><div class="q-pbar" aria-hidden="true"><i style="width:' + Math.round(100 * (P.i + 1) / n) + '%"></i></div><span class="q-count">' + (P.i + 1) + " / " + n + '</span><button class="q-icon" data-map aria-label="All questions"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg></button></div></div>' +
       '<div class="q-ovbody" id="q-pbody"><div class="in"><div class="q-settitle">' + esc(b.title) + " · " + esc(b.label) + '</div><div class="q-qtype"><span class="t">' + (TYPE[q.type] || "OSPE station") + "</span>" + (q.type === "sa" ? "<span>" + maxPts(q) + " marks</span>" : "") + (q.topup ? '<span class="top">LO top-up</span>' : "") + "</div>" + qInput(q) + "</div></div>" +
@@ -774,29 +1022,29 @@
     if (fi) { fi.oninput = function () { A(q.id).text = fi.value; save(); updFinish(); }; fi.onchange = function () { if (fi.value.trim()) logActivity(); }; fi.onkeydown = function (e) { if (e.key === "Enter") { e.preventDefault(); (nx || fn).click(); } }; }
     [].forEach.call(ov.querySelectorAll("[data-sa]"), function (x) { x.oninput = function () { var a = A(q.id); a.text = a.text || {}; a.text[x.dataset.sa] = x.value; save(); updFinish(); }; x.onchange = function () { if (x.value.trim()) logActivity(); }; });
   }
-  function updFinish() { var b = BLOCKS[P.key], f = $("q-ov").querySelector("[data-finish]"); if (f) f.textContent = "Finish and mark · " + b.questions.filter(answered).length + "/" + b.questions.length; }
+  function updFinish() { var b = curBlock(), f = $("q-ov").querySelector("[data-finish]"); if (f) f.textContent = "Finish and mark · " + b.questions.filter(answered).length + "/" + b.questions.length; }
   function sheet(html, mod) { var sh = $("q-sheet"); sh.className = "q-sheet qb mod-" + mod; sh.innerHTML = '<div class="q-sbox" role="dialog">' + html + "</div>"; sh.hidden = false; sh.onclick = function (e) { if (e.target === sh) sh.hidden = true; }; return sh; }
   function showMap() {
-    var b = BLOCKS[P.key];
+    var b = curBlock();
     var sh = sheet('<h3>Jump to a question</h3><p>Shaded ones have an answer saved.</p><div class="q-grid">' + b.questions.map(function (q, i) { return '<button class="' + (answered(q) ? "ans" : "") + (i === P.i ? " cur" : "") + '" data-j="' + i + '">' + (i + 1) + "</button>"; }).join("") + '</div><div class="q-row"><button class="q-btn wide" data-close>Close</button><button class="q-btn pri" data-fin>Finish and mark</button></div>', b.module);
     sh.querySelector("[data-close]").onclick = function () { sh.hidden = true; };
     sh.querySelector("[data-fin]").onclick = function () { sh.hidden = true; confirmFinish(); };
     [].forEach.call(sh.querySelectorAll("[data-j]"), function (x) { x.onclick = function () { P.i = +x.dataset.j; sh.hidden = true; renderPlayer(); }; });
   }
   function confirmFinish() {
-    var b = BLOCKS[P.key], left = b.questions.filter(function (q) { return !answered(q); }).length;
+    var b = curBlock(), left = b.questions.filter(function (q) { return !answered(q); }).length;
     if (!left) return finish();
     var sh = sheet("<h3>" + left + " " + (left === 1 ? "question has" : "questions have") + ' no answer</h3><p>Unanswered questions score zero. Go back and answer them, or mark the set now.</p><div class="q-row"><button class="q-btn wide" data-back>Go back</button><button class="q-btn pri" data-go>Mark now</button></div>', b.module);
     sh.querySelector("[data-back]").onclick = function () { sh.hidden = true; for (var i = 0; i < b.questions.length; i++) if (!answered(b.questions[i])) { P.i = i; break; } renderPlayer(); };
     sh.querySelector("[data-go]").onclick = function () { sh.hidden = true; finish(); };
   }
-  function finish() { var key = P.key; S.marked[key] = {at: Date.now()}; logActivity(); P = null; planDirty = true; openResults(key); }
+  function finish() { if (P.rv) return finishReview(); var key = P.key; S.marked[key] = {at: Date.now()}; logActivity(); P = null; planDirty = true; openResults(key); }
 
   // ---------- results ----------
   function verdict(p) { if (p == null) return ["Marked", "Mark the short answers below to finish your score."]; if (p >= 85) return ["Excellent", "This topic is secure. Keep it ticking over."]; if (p >= 70) return ["Good work", "A few gaps to tidy. Review the red ones below."]; if (p >= 50) return ["Getting there", "Go through the explanations below, then retry on another day."]; return ["Worth another pass", "Re-read your notes on this one, then retry the set."]; }
   function openResults(key) { R = {key:key, filter: R && R.key === key ? R.filter : "all"}; renderResults(); }
   function reviewHtml(q, n) {
-    var a = S.a[q.id] || {}, g = grade(q), h = "", cls = {ok:"ok",part:"no",no:"no",skip:"",self:"self"}[g.state];
+    var a = AS()[q.id] || {}, g = grade(q), h = "", cls = {ok:"ok",part:"no",no:"no",skip:"",self:"self"}[g.state];
     var tag = g.state === "ok" ? '<span class="ok-t">Correct</span>' : g.state === "part" ? '<span class="no-t">' + g.pts + "/" + g.max + "</span>" : g.state === "no" ? '<span class="no-t">Incorrect</span>' : g.state === "self" ? '<span class="self-t">Mark yourself</span>' : '<span class="sk-t">Not answered</span>';
     h += '<div class="q-qtype"><span>Q' + n + '</span><span class="t">' + (TYPE[q.type] || "OSPE station") + "</span>" + tag + (q.topup ? '<span class="top">LO top-up</span>' : "") + "</div>";
     if (q.type === "sba") {
@@ -873,12 +1121,17 @@
     refresh(); window.scrollTo(0, 0);
     try { sessionStorage.setItem("nicole-tab", t); } catch (e) {}
   }
-  [].forEach.call(document.querySelectorAll("[data-tab]"), function (b) { b.onclick = function () { if (b.dataset.tab === curTab && curTab === "today") renderToday(today()); showTab(b.dataset.tab); }; });
+  [].forEach.call(document.querySelectorAll("[data-tab]"), function (b) { b.onclick = function () { if (b.dataset.tab === curTab && curTab === "today") renderToday(today());
+    if (b.dataset.tab === curTab && curTab === "practice") PV.v = "hub"; showTab(b.dataset.tab); }; });
 
   document.addEventListener("click", function (e) {
     var root = e.target.closest(".qb"); if (!root || root.id === "q-ov" || root.id === "q-sheet") return;
     var x;
     if ((x = e.target.closest("[data-open]"))) { openBlock(x.dataset.open); return; }
+    if ((x = e.target.closest("[data-pv]"))) { showPractice(x.dataset.pv, x.dataset.pm); return; }
+    if ((x = e.target.closest("[data-topic]"))) { openTopic(x.dataset.topic); return; }
+    if ((x = e.target.closest("[data-rv]"))) { startReview(x.dataset.rv, x.dataset.fresh === "1"); return; }
+    if ((x = e.target.closest("[data-rvres]"))) { openReviewResults(x.dataset.rvres); return; }
     if ((x = e.target.closest("[data-date]"))) { renderToday(x.dataset.date); return; }
     if ((x = e.target.closest("[data-today]"))) { renderToday(today()); return; }
     if ((x = e.target.closest("[data-wk]"))) { var tg = addDays(curDate, +x.dataset.wk), mon = addDays(tg, -((new Date(tg + "T12:00:00").getDay() + 6) % 7)), pick = null;
@@ -910,7 +1163,7 @@
     if (!$("q-sheet").hidden) { if (e.key === "Escape") $("q-sheet").hidden = true; return; }
     if (!P) { if (e.key === "Escape" && !$("q-ov").hidden) closeOv(); return; }
     var tag = (e.target.tagName || "").toLowerCase(); if (tag === "textarea" || tag === "input" || tag === "select") return;
-    var b = BLOCKS[P.key];
+    var b = curBlock();
     if (e.key === "ArrowRight" && P.i < b.questions.length - 1) { P.i++; renderPlayer(); }
     else if (e.key === "ArrowLeft" && P.i > 0) { P.i--; renderPlayer(); }
     else if (/^[1-5a-eA-E]$/.test(e.key)) { var k = /\d/.test(e.key) ? +e.key - 1 : "abcde".indexOf(e.key.toLowerCase()); var o = $("q-ov").querySelectorAll("[data-sba]")[k]; if (o) o.click(); }
@@ -919,7 +1172,7 @@
 
   // date rollover: midnight, or reopening the app on another day
   var shownToday = today();
-  function checkDate() { var t = today(); if (t === shownToday) return; var was = curDate === shownToday; shownToday = t; if (was) curDate = t; planDirty = true; if (!P && !R) refresh(); }
+  function checkDate() { var t = today(); if (t === shownToday) return; var was = curDate === shownToday; shownToday = t; if (was) curDate = t; planDirty = true; if (!P && !R && !RV) refresh(); }
   setInterval(checkDate, 60000);
   document.addEventListener("visibilitychange", function () { if (!document.hidden) checkDate(); });
   window.addEventListener("focus", checkDate);
@@ -928,7 +1181,7 @@
   window.qbSnapshot = function () { return S; };
   window.qbRestoreSched = function (x) { var n = SCH.restore(x); if (n) { resched(); refresh(); } return n; };
   window.qbRestore = function (q) { if (!q || typeof q !== "object") return 0; var n = 0;
-    ["a","marked","days"].forEach(function (k) { var src = q[k] || {}; S[k] = S[k] || {}; Object.keys(src).forEach(function (id) { if (!(id in S[k])) { S[k][id] = src[id]; n++; } }); });
+    ["a","marked","days","mw","mr","seen","mixLog"].forEach(function (k) { var src = q[k] || {}; S[k] = S[k] || {}; Object.keys(src).forEach(function (id) { if (!(id in S[k])) { S[k][id] = src[id]; n++; } }); });
     repairLostAnswers(); save(); planDirty = true; refresh(); return n; };
 
   $("theme").addEventListener("click", function () { openSettings(); });
