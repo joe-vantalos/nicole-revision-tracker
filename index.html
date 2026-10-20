@@ -1253,6 +1253,48 @@
   .ph-name.l { right: calc(50% - var(--x) + 46px); left: 0; text-align: right; }
   .ph-step.cur .ph-name { color: var(--ink); font-weight: 800; }
   .q-sheet .ph-rd { margin: 16px 0 0; font-size: 13px; color: var(--ink-2); } .q-sheet .ph-rd b { color: var(--ink); }
+  /* Plan: Path | List. Path hides the checklist; List hides the path and shows the checklist as before */
+  #plan-switch { display: flex; justify-content: center; padding: 14px 16px 0; }
+  .pv-seg { display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--panel); box-shadow: var(--nm-out); }
+  .pv-seg button { border-radius: 999px; padding: 8px 20px; font-weight: 800; font-size: 14px; color: var(--ink-2); }
+  .pv-seg button[aria-pressed="true"] { background: var(--sage); color: var(--on-accent); }
+  #tab-plan[data-view="path"] > :not(#plan-switch):not(#plan-path) { display: none !important; }
+  #tab-plan[data-view="list"] > #plan-path { display: none; }
+  .pp { padding-bottom: 32px; }
+  .pp .q-head { padding-top: 14px; }
+  .pp-sum { background: var(--panel); border-radius: 14px; box-shadow: var(--nm-out); padding: 12px 14px; margin-bottom: 4px; }
+  .pp-sum p { margin: 8px 0 0; font-size: 14px; color: var(--ink-2); } .pp-sum b { color: var(--ink); } .pp-sum .bad { color: var(--bad); font-weight: 700; }
+  .pp-sum .q-bar i { background: var(--sage); }
+  .pp-stick { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 10px 0 8px; }
+  .pp-stick .ph-pills { align-items: center; }
+  .pp-jump { margin-left: auto; }
+  .pp-path { padding: 4px 0 12px; }
+  .pp-now { display: flex; align-items: center; gap: 10px; margin: 16px 0 4px; color: var(--sage-deep); font-size: 13px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; scroll-margin-top: 140px; }
+  .pp-now::before, .pp-now::after { content: ""; flex: 1; height: 3px; border-radius: 3px; background: var(--sage); }
+  .pp-step { position: relative; height: 122px; --t: 18px; }
+  .pp-step.cur { height: 158px; --t: 54px; }
+  .pp-step .ph-ringo { position: absolute; top: calc(var(--t) - 11px); left: calc(50% + var(--x) - 45px); width: 90px; height: 90px; border-radius: 50%;
+              background: conic-gradient(var(--m) calc(var(--rp) * 1%), var(--hair) 0);
+              -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px)); }
+  .pp-step .ph-node > svg.st { fill: none; stroke: var(--ink-3); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  .pp-step .ph-node.s-on > svg.st { stroke: var(--on-accent); }
+  .pp-step .ph-bub { bottom: calc(100% + 22px); }
+  .pp-late { position: absolute; top: calc(var(--t) - 6px); left: calc(50% + var(--x) + 26px); width: 14px; height: 14px; border-radius: 50%; background: var(--bad); box-shadow: 0 0 0 3px var(--bg); }
+  .pp-name { position: absolute; top: calc(var(--t) + 4px); display: grid; gap: 2px; }
+  .pp-name b { font-size: 13.5px; font-weight: 700; line-height: 1.25; color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .pp-name small { font-size: 12px; font-weight: 700; color: var(--ink-3); }
+  .pp-step.cur .pp-name b { color: var(--ink); font-weight: 800; }
+  .pp-name.r { left: calc(50% + var(--x) + 54px); right: 0; }
+  .pp-name.l { right: calc(50% - var(--x) + 54px); left: 0; text-align: right; }
+  .q-sheet .pp-sec { background: var(--panel); border-radius: 14px; padding: 12px; margin-top: 10px; }
+  .q-sheet .pp-sec .q-setbtn { margin-top: 0; }
+  .pp-sec summary { display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; } .pp-sec summary::-webkit-details-marker { display: none; }
+  .pp-sec summary b { font-size: 16px; }
+  .pp-sm { margin-left: auto; font-size: 12.5px; font-weight: 700; color: var(--ink-2); } .pp-sm.bad { color: var(--bad); }
+  .pp-sec .q-list { margin-top: 8px; }
+  .pp-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .q-sheet .pp-foot { position: sticky; bottom: -20px; margin: 14px -20px -20px; padding: 12px 20px 20px; background: var(--bg); box-shadow: 0 -1px 0 var(--hair); }
+
   /* daily mix + mistakes */
   .ph-mix { background: var(--ms); box-shadow: none; margin-bottom: 14px; }
   .ph-mix .q-chip { background: var(--panel); }
@@ -1518,7 +1560,8 @@
 <body>
 
 <div id="tab-today" class="qb" hidden><div class="qwrap" id="tab-today-in"></div></div>
-<div id="tab-plan">
+<!-- Plan opens on the path (qb.js); List shows the checklist below exactly as before -->
+<div id="tab-plan"><div id="plan-switch" class="qb"><div class="pv-seg" role="group" aria-label="Plan view"><button data-planview="path" aria-pressed="true">Path</button><button data-planview="list" aria-pressed="false">List</button></div></div><div id="plan-path" class="qb"></div>
 
 <div class="wrap masthead">
   <div class="top">

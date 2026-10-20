@@ -665,6 +665,87 @@
   }
   function showPractice(v, mod) { PV = {v: v, mod: mod || PV.mod}; renderPractice(); window.scrollTo(0, 0); }
 
+  // ---------- PLAN: the whole plan as a path ----------
+  // Plan opens on the path: every day's work, the same units Today lists, as circles in date order, so
+  // she can see where she is between the first topic and the exams. List is the original checklist.
+  var PLANV = "nicole-revision-planview", PP = {mod: "ALL"};
+  function planView() { try { return localStorage.getItem(PLANV) === "list" ? "list" : "path"; } catch (e) { return "path"; } }
+  function applyPlanView() { var v = planView(); $("tab-plan").setAttribute("data-view", v);
+    [].forEach.call(document.querySelectorAll("[data-planview]"), function (b) { b.setAttribute("aria-pressed", b.dataset.planview === v ? "true" : "false"); }); }
+  function setPlanView(v) {
+    try { if (v === "list") localStorage.setItem(PLANV, "list"); else localStorage.removeItem(PLANV); } catch (e) {}
+    applyPlanView();
+    if (v === "list") { window.scrollTo(0, 0); if (typeof measureDeck === "function") measureDeck(); } else { renderPlanPath(); scrollToNow(); }
+  }
+  var UICON = {
+    1: STAR,
+    2: '<svg viewBox="0 0 24 24" aria-hidden="true" class="st"><path d="M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5"/></svg>',
+    3: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>',
+    paper: '<svg viewBox="0 0 24 24" aria-hidden="true" class="st"><path d="M8 4h8v4a4 4 0 0 1-8 0zM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 12v4M8 20h8"/></svg>',
+    ospe: '<svg viewBox="0 0 24 24" aria-hidden="true" class="st"><path d="M9 3h6v4H9zM7 5H5v16h14V5h-2M9 13l2 2 4-4"/></svg>'
+  };
+  function planUnits() { var out = []; DATA.days.forEach(function (d) { SCH.unitsOn(d.date).forEach(function (u) { out.push(u); }); }); return out; }
+  function unitState(u) {
+    var tk = u.sess.filter(function (id) { return done[id]; }).length, mk = u.blocks.filter(function (k) { return S.marked[k]; }).length, nb = null;
+    u.blocks.forEach(function (k) { if (!nb && !S.marked[k]) nb = BLOCKS[k]; });
+    var n = u.sess.length + u.blocks.length, d = tk + mk;
+    return {tk: tk, mk: mk, nb: nb, all: d === n, started: d > 0, rp: n ? Math.round(100 * d / n) : 100, late: d < n && u.from < today()};
+  }
+  function nextStep(u, s) { return s.tk < u.sess.length ? (u.sess.length - s.tk) + " TO TICK" : s.nb ? (blockInfo(s.nb).ans ? "CONTINUE" : "START") : ""; }
+
+  function planPathHtml() {
+    var t = today(), m = PP.mod, us = planUnits().filter(function (u) { return m === "ALL" || u.module === m; }), st = us.map(unitState);
+    var cur = -1, late = 0, fin = 0, wk = null, now = false, XS = [0, -56, -84, -56, 0, 56, 84, 56];
+    st.forEach(function (s, k) { if (cur < 0 && !s.all) cur = k; if (s.late) late++; if (s.all) fin++; });
+    var h = '<header class="q-head"><div><p class="q-eyebrow">Plan</p><h1>Your path</h1></div>' + GEAR + "</header>" +
+      '<div class="pp-sum"><div class="q-bar"><i style="width:' + (us.length ? Math.round(100 * fin / us.length) : 0) + '%"></i></div><p><b>' + fin + " of " + us.length + "</b> done · " +
+      (late ? '<span class="bad">' + late + " left over from earlier days</span>" : "on pace, nothing left over") + "</p></div>" +
+      '<div class="pp-stick"><div class="ph-pills" role="group" aria-label="Show">' + [["ALL","All"],["GIL","GIL"],["URO","URO"],["ENI","ENI"]].map(function (o) {
+        return '<button class="ph-pill mod-' + o[0] + '" data-ppm="' + o[0] + '" aria-pressed="' + (o[0] === m) + '">' + o[1] + "</button>"; }).join("") +
+      (cur >= 0 ? '<button class="q-btn sm pp-jump" data-ppnow>Jump to today</button>' : "") + "</div></div><div class=\"pp-path\">";
+    us.forEach(function (u, k) {
+      var x = new Date(u.from + "T12:00:00"), mon = addDays(u.from, -((x.getDay() + 6) % 7));
+      if (mon !== wk) { wk = mon; var fw = fmt(mon); h += '<div class="ph-wk">Week of ' + fw.d + " " + fw.m + "</div>"; }
+      if (!now && u.from >= t) { now = true; h += '<div class="pp-now" id="pp-now"><span>Today · ' + fmt(t).w + " " + fmt(t).d + " " + fmt(t).m + "</span></div>"; }
+      var s = st[k], isCur = k === cur, off = XS[k % XS.length], f = fmt(u.from), bub = isCur ? nextStep(u, s) : "";
+      var icon = s.all ? TICK : (u.kind === "topic" ? UICON[u.round] : UICON[u.kind] || UICON.paper);
+      h += '<div class="pp-step mod-' + u.module + (isCur ? " cur" : "") + '" style="--x:' + off + 'px"><span class="ph-ringo" style="--rp:' + s.rp + '" aria-hidden="true"></span>' +
+        '<button class="ph-node' + (s.started || isCur ? " s-on" : "") + '" data-unit="' + u.id + '" data-uday="' + u.from + '" aria-label="' + esc(u.title) + ", " + esc(u.label) + ", " + f.w + " " + f.d + " " + f.m +
+        (s.all ? ", done" : s.late ? ", left over" : "") + '">' + (bub ? '<span class="ph-bub">' + bub + "</span>" : "") + icon + "</button>" + (s.late ? '<span class="pp-late" aria-hidden="true"></span>' : "") +
+        '<span class="pp-name ' + (off > 0 ? "l" : "r") + '"><b>' + esc(u.title) + "</b><small>" + esc(u.label) + " · " + f.w + " " + f.d + " " + f.m + "</small></span></div>";
+    });
+    if (!now) h += '<div class="pp-now" id="pp-now"><span>Today · ' + fmt(t).w + " " + fmt(t).d + " " + fmt(t).m + "</span></div>";
+    return h + "</div>";
+  }
+  function renderPlanPath() {
+    var el = $("plan-path"); if (!el) return;
+    if (planView() !== "path") { el.innerHTML = ""; return; }
+    var y = window.scrollY; el.innerHTML = '<div class="qwrap pp">' + planPathHtml() + "</div>"; window.scrollTo(0, y);
+  }
+  function scrollToNow() { var n = $("pp-now"); if (n) window.scrollTo({top: Math.max(0, n.getBoundingClientRect().top + window.scrollY - 160), behavior: "instant"}); }
+
+  // Tapping a circle: that day's piece of the plan. Revise ticks the same sessions as Today; the
+  // questions open as before; it can be moved, or opened as its day on Today.
+  function openUnit(id, day, keepY) {
+    var u = findUnit(id, day); if (!u) return;
+    var s = unitState(u), f = fmt(u.from), od = u.sess.filter(function (x) { return !done[x] && SESS[x].due < today(); }).length;
+    var h = '<p class="q-eyebrow">' + (u.module === "ALL" || u.module === "OSPE" ? "All modules" : u.module) + " · " + esc(u.label) + " · " + whenLabel(u.from) + "</p><h3>" + esc(u.title) + "</h3>";
+    if (u.sess.length) h += '<details class="pp-sec"' + (s.tk < u.sess.length ? " open" : "") + '><summary><b>Revise</b><span class="pp-sm' + (od ? " bad" : "") + '">' + s.tk + " of " + u.sess.length + " ticked" +
+      (od ? " · " + od + " overdue" : "") + '</span></summary><div class="q-list">' + u.sess.map(function (x) { return sessRow(x, true); }).join("") + "</div></details>";
+    u.blocks.forEach(function (k) { h += '<div class="pp-sec">' + setButton(BLOCKS[k]) + "</div>"; });
+    h += '<div class="pp-acts"><button class="q-btn sm" data-goday>Open this day</button>' + (u.pinned ? "" : '<button class="q-btn sm" data-umove>Move to another day</button>') + "</div>";
+    var main = ""; if (s.nb) { var i = blockInfo(s.nb); main = '<button class="q-btn pri" data-open="' + s.nb.key + '">' + (i.ans ? "Continue · " + i.ans + "/" + i.n : "Start questions") + "</button>"; }
+    h += '<div class="q-row pp-foot"><button class="q-btn wide" data-close>Close</button>' + main + "</div>";
+    var sh = sheet(h, u.module), box = sh.querySelector(".q-sbox");
+    if (keepY) box.scrollTop = keepY;
+    sh.querySelector("[data-close]").onclick = function () { sh.hidden = true; };
+    [].forEach.call(sh.querySelectorAll("[data-open]"), function (x) { x.onclick = function () { sh.hidden = true; openBlock(x.dataset.open); }; });
+    sh.querySelector("[data-goday]").onclick = function () { sh.hidden = true; showTab("today"); renderToday(u.from); };
+    var mv = sh.querySelector("[data-umove]"); if (mv) mv.onclick = function () { sh.hidden = true; openMove([u]); };
+    sh.onchange = function (e) { var x = e.target; if (!x.matches || !x.matches("[data-tick]")) return;
+      e.stopPropagation(); tick(x.dataset.tick, x.checked); refresh(); openUnit(id, day, box.scrollTop); };
+  }
+
   // ---------- daily mix + mistakes ----------
   // A review session keeps its answers in S.rv[kind].a and its outcomes in S.mw / S.mr (last wrong /
   // last right, per question), S.seen (last day used) and S.mixLog. None of it touches S.a, S.marked
@@ -820,6 +901,7 @@
       "<li>A session turns <span class=\"warn\">amber</span> when you've marked its questions but haven't ticked it, and <span class=\"bad\">red</span> once its day has passed unticked. Red ones collect under Overdue at the top of Today.</li>" +
       "<li><b>Practice</b> opens on your next set. Each module is a path of topics in plan order: a filled circle has a marked round, a tick means every round is marked, and the stars underneath are its rounds. Tap a circle to see and start its rounds. <b>All question sets</b> at the bottom is the full list, and <b>Classic Practice list</b> (Settings → Practice) makes that list the whole tab again.</li>" +
       "<li><b>Daily mix</b> is a short quiz each day from sets you've already marked, with up to 4 of your mistakes mixed in and the topics you were tested on longest ago first. <b>Mistakes</b> lists every question you got wrong in a set or a review; get it right in a round and it leaves the list. Neither changes your set scores, your plan or your ticks; they only count towards your streak.</li>" +
+      "<li><b>Plan</b> opens on your path: every day's work from the first topic to the exams, in order, with a line for today. The ring round a circle fills as you tick its sessions and mark its questions; a red dot means it's left over from an earlier day. Tap a circle to tick, start questions, move it or open its day. <b>List</b> at the top is the full checklist with search, flags and filters.</li>" +
       "<li>Questions come one at a time. Nothing is marked until you press <b>Finish and mark</b> at the end of the set.</li>" +
       "<li><b>Think first</b> (Settings → Practice) hides the options on single best answer questions until you tap Show options. Answering from memory first is a better test, and the options can't hint at the answer.</li>" +
       "<li>Single best answer, extended matching and fill in the blank mark themselves. For short answers and OSPE stations you mark yourself against the mark scheme.</li>" +
@@ -1112,13 +1194,14 @@
     if (curTab === "today") renderToday();
     else if (curTab === "practice") renderPractice();
     else if (curTab === "progress") renderProgress();
-    else if (curTab === "plan" && planDirty) { planDirty = false; render(); }
+    else if (curTab === "plan") { if (planDirty) { planDirty = false; render(); } renderPlanPath(); }
   }
   function showTab(t) {
     curTab = t;
     TABS.forEach(function (k) { $("tab-" + k).hidden = k !== t; var b = document.querySelector('[data-tab="' + k + '"]'); b.setAttribute("aria-current", k === t ? "page" : "false"); });
     if (t === "plan") { planDirty = false; render(); if (typeof measureDeck === "function") measureDeck(); }
     refresh(); window.scrollTo(0, 0);
+    if (t === "plan" && planView() === "path") scrollToNow();
     try { sessionStorage.setItem("nicole-tab", t); } catch (e) {}
   }
   [].forEach.call(document.querySelectorAll("[data-tab]"), function (b) { b.onclick = function () { if (b.dataset.tab === curTab && curTab === "today") renderToday(today());
@@ -1130,6 +1213,10 @@
     if ((x = e.target.closest("[data-open]"))) { openBlock(x.dataset.open); return; }
     if ((x = e.target.closest("[data-pv]"))) { showPractice(x.dataset.pv, x.dataset.pm); return; }
     if ((x = e.target.closest("[data-topic]"))) { openTopic(x.dataset.topic); return; }
+    if ((x = e.target.closest("[data-planview]"))) { setPlanView(x.dataset.planview); return; }
+    if ((x = e.target.closest("[data-ppm]"))) { PP.mod = x.dataset.ppm; renderPlanPath(); return; }
+    if ((x = e.target.closest("[data-ppnow]"))) { scrollToNow(); return; }
+    if ((x = e.target.closest("[data-unit]"))) { openUnit(x.dataset.unit, x.dataset.uday); return; }
     if ((x = e.target.closest("[data-rv]"))) { startReview(x.dataset.rv, x.dataset.fresh === "1"); return; }
     if ((x = e.target.closest("[data-rvres]"))) { openReviewResults(x.dataset.rvres); return; }
     if ((x = e.target.closest("[data-date]"))) { renderToday(x.dataset.date); return; }
@@ -1187,6 +1274,7 @@
   $("theme").addEventListener("click", function () { openSettings(); });
   var start = "today"; try { start = sessionStorage.getItem("nicole-tab") || "today"; } catch (e) {}
   resched();
+  applyPlanView();
   render(); // recolour Plan now that session states exist
   showTab(TABS.indexOf(start) >= 0 ? start : "today");
   if (repaired) setTimeout(function () { toast("A bug stopped answers saving. " + repaired + " question " + (repaired === 1 ? "set has" : "sets have") + " been reopened so you can redo " + (repaired === 1 ? "it" : "them") + ".", 9000); }, 600);
