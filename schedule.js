@@ -44,8 +44,11 @@
   var FIRST_EXAM = EXAM_DAYS[0] || null;
 
   // Each module's exam day, so nothing can be scheduled past the paper it is for.
-  // A module with no exam day in the timetable (ENI) is bounded by the last planned day.
-  function examOf(mod) { for (var i = 0; i < EXAM_DAYS.length; i++) if (BASE_MOD[EXAM_DAYS[i]] === mod) return EXAM_DAYS[i]; return null; }
+  // A day can hold more than one exam (ENI and the OSPE share 17 Nov): its `exams` list
+  // names them; otherwise the day's module is its exam. A module with no exam day is
+  // bounded by the last planned day.
+  function examsOn(iso) { return DAY[iso].exams || [BASE_MOD[iso]]; }
+  function examOf(mod) { for (var i = 0; i < EXAM_DAYS.length; i++) if (examsOn(EXAM_DAYS[i]).indexOf(mod) >= 0) return EXAM_DAYS[i]; return null; }
   var EXAM = {URO: examOf("URO"), GIL: examOf("GIL"), ENI: examOf("ENI"), OSPE: examOf("OSPE")};
   function lastFor(mod) { return EXAM[mod] ? addDays(EXAM[mod], -1) : LAST; }
 
@@ -135,7 +138,7 @@
   function dayKindLabel(iso) {
     if (offByUser(iso)) return "Day off";
     if (KIND[iso] === "off") return hasWork(iso) ? "Rest day, with work moved in" : "Rest day";
-    if (KIND[iso] === "exam") return BASE_MOD[iso] === "OSPE" ? "OSPE day" : BASE_MOD[iso] + " exam day";
+    if (KIND[iso] === "exam") return examsOn(iso).map(function (m) { return m === "OSPE" ? "OSPE" : m + " exam"; }).join(" and ") + " day";
     return null;
   }
 

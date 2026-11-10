@@ -124,9 +124,13 @@
       var ks = Object.keys(labs);
       return pre + (ks.length === 1 ? ks[0].toLowerCase() : "revision");
     }
-    if (d.module === "OSPE") return "OSPE walk-through";
-    if (d.kind === "mixed") return d.date === "2026-11-06" ? "Mixed papers" : "Full mock";
-    return d.module + (d.kind === "consolidation" ? " consolidation" : d.kind === "exam" ? " rapid recall" : " first pass"); }
+    // Past-paper practice from the revision pack sits on top of the day's own work.
+    var pp = {}; d.blocks.forEach(function (b) { if (b.pp) pp[b.module] = 1; });
+    var ppl = Object.keys(pp).length ? " · " + Object.keys(pp).join(" + ") + " past-paper practice" : "";
+    if (d.blocks.length && d.blocks.every(function (b) { return b.pp; })) return Object.keys(pp).join(" + ") + " past-paper practice";
+    if (d.module === "OSPE") return "OSPE walk-through" + ppl;
+    if (d.kind === "mixed") return (d.date === "2026-11-06" ? "Mixed papers" : "Full mock") + ppl;
+    return d.module + (d.kind === "consolidation" ? " consolidation" : d.kind === "exam" ? " rapid recall" : " first pass") + ppl; }
   function dayMod(d) { var m = d.mods || []; return m.length === 1 ? m[0] : m.length ? "ALL" : (d.kind === "mixed" ? "ALL" : (d.module || "ALL")); }
   // How full a day is, as a bar and as words. Minutes are never shown: the questions are
   // measured but the revising isn't, so only the comparison between days is honest.

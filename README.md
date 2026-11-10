@@ -111,6 +111,20 @@ are still sitting under the old address, unreachable from the new one.
 If you ever have to move it: export a backup from the old URL first, then
 restore it at the new one.
 
+## Exam days and past-paper practice
+
+An exam day is a day in `questions.js` with `kind: "exam"`. Its `module` is the exam
+taken that day, unless the day has an `exams` list: 17 November carries
+`"exams": ["ENI", "OSPE"]` because both are examined then. `schedule.js` reads that list
+to find each module's exam date, so no ENI work can be moved past 16 November.
+
+The blocks whose key starts `PP-` (marked `"pp": true`) are the short-answer questions from
+the written revision pack, built from the school's generic exam feedback for 2019–20 to
+2025–26. They are ordinary practice papers: each question is a `sa` question whose
+`explanation` carries the examiner traps and the past paper it is modelled on. They sit on
+11, 12, 15, 16, 17 and 18 November, and the day label adds "past-paper practice" where
+they share a day with other work.
+
 ## Checking the multiple-choice questions
 
 Run `node tools/audit-mcq.js` after changing or adding questions. It checks every single
